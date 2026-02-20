@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pop-A-Shot Slingshot</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 2px dashed rgba(255,255,255,0.4); border-radius: 50%;
+            transition: border-color 0.2s;
+        }
+        #crosshair.active { border-color: #fb923c; border-style: solid; border-width: 3px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="crosshair"></div>
+        <div class="absolute top-5 left-5 bg-black/60 p-4 rounded-xl border border-white/20 text-white pointer-events-auto backdrop-blur-md">
+            <h1 class="text-xl font-bold uppercase tracking-widest text-orange-500 italic">Arcade Pop-A-Shot</h1>
+            <p class="text-[10px] text-gray-300 mt-1 uppercase">Grab a ball • Pull back to launch • Precision Targeting</p>
+            <div class="mt-4 flex justify-between items-center font-mono">
+                <span class="text-lg">SCORE: <span id="score" class="text-orange-400">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, rim, backboard, net;
+        let score = 0;
+        let balls = [];
+        let activeShots = []; 
+        
+        let netWiggleTime = 0;
+        let isNetWiggling = false;
+        let originalNetVertices = [];
+
+        // PHYSICS CONSTANTS
+        const GRAVITY = -0.0022; 
+        const PULL_POWER_X = 0.06; 
+        const PULL_POWER_FORWARD = 0.0675; 
+        
+        // LAUNCH ANGLE ADJUSTMENTS
+        const BASE_LIFT = 0.14; 
+        const FORWARD_Y_BOOST = 1.25; 
+        const FORWARD_Z_BOOST = 2.45; 
+        
+        const RIM_Z = -1.95; 
+        const RIM_Y = 4.3; 
+        const BACKBOARD_Z = -2.75;
+        const BACKBOARD_Y = 4.9; 
+        const NET_HEIGHT = 0.8;
+        
+        const NET_FRICTION = 0.94; 
+        const SPIN_FRICTION_FACTOR = 0.008; 
+        const GLOBAL_SPEED_MULTIPLIER = 0.5; 
+        const RIM_RADIUS = 0.48; 
+        const RIM_THICKNESS = 0.045;
+        const RIM_COLOR = 0xff4500; 
+        const RIM_BOUNCE_MULT = 0.48; 
+        
+        let mouse = new THREE.Vector2();
+        let raycaster = new THREE.Raycaster();
+        let heldBall = null;
+        let isPullingBack = false;
+        let trajectoryDots = [];
+        let projectionMarker;
+        const MAX_DOTS = 150; 
+        const BALL_RADIUS = 0.22;
+        const BALL_DIAMETER = BALL_RADIUS * 2;
+        
+        const RACK_FRONT_Z = 4.5; 
+        const RACK_FRONT_LIMIT = RACK_FRONT_Z - BALL_RADIUS - 0.2; 
+        
+        const RAMP_BASE_Y = 1.2; 
+        const RAMP_SLOPE = 0.012; 
+
+        const WALL_LEFT = -1.95;
+        const WALL_RIGHT = 1.95;
+        const WALL_BACK = -2.95;
+
+        function getFloorY(z) {
+            return RAMP_BASE_Y + ((z - RACK_FRONT_LIMIT) * RAMP_SLOPE) + BALL_RADIUS;
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x2a2a35); 
+            scene.fog = new THREE.Fog(0x2a2a35, 20, 70);
+            
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3.8, 8.5);
+            camera.lookAt(0, 3.2, -2);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+            document.body.appendChild(renderer.domElement);
+
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+            scene.add(hemiLight);
+
+            const topLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            topLight.position.set(0, 15, 5);
+            topLight.castShadow = true;
+            topLight.shadow.mapSize.width = 2048;
+            topLight.shadow.mapSize.height = 2048;
+            scene.add(topLight);
+
+            const rimLight = new THREE.PointLight(0xff8844, 1.2, 10);
+            rimLight.position.set(0, 5, -1.5);
+            scene.add(rimLight);
+
+            createArcadeCabinet();
+            createHoop();
+            createBallRack();
+            createTrajectoryObjects();
+            createMarkers();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mouseup', onMouseUp);
+
+            animate();
+        }
+
+        function createHardwoodTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#8b5a2b';
+            ctx.fillRect(0, 0, 512, 512);
+            const boardCount = 12;
+            const boardWidth = 512 / boardCount;
+            for (let i = 0; i < boardCount; i++) {
+                const shadeOffset = (Math.random() - 0.5) * 40;
+                ctx.fillStyle = `rgb(${139 + shadeOffset}, ${90 + shadeOffset}, ${43 + shadeOffset})`;
+                ctx.fillRect(i * boardWidth, 0, boardWidth, 512);
+                ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                ctx.lineWidth = 1;
+                for (let j = 0; j < 15; j++) {
+                    ctx.beginPath();
+                    const startX = i * boardWidth + Math.random() * boardWidth;
+                    ctx.moveTo(startX, 0);
+                    ctx.bezierCurveTo(startX + (Math.random() - 0.5) * 20, 170, startX + (Math.random() - 0.5) * 20, 340, startX + (Math.random() - 0.5) * 10, 512);
+                    ctx.stroke();
+                }
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(i * boardWidth, 0);
+                ctx.lineTo(i * boardWidth, 512);
+                ctx.stroke();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createBackboardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f8f8f0';
+            ctx.fillRect(0, 0, 512, 512);
+            ctx.strokeStyle = '#ff4500'; 
+            ctx.lineWidth = 20;
+            ctx.strokeRect(10, 10, 492, 492);
+            ctx.lineWidth = 15;
+            ctx.strokeRect(160, 240, 192, 180);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createArcadeCabinet() {
+            const cabinetGroup = new THREE.Group();
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.3, roughness: 0.5 });
+            const woodTex = createHardwoodTexture();
+            const rampMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6, metalness: 0.1 });
+            
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = 0;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            const panelGeo = new THREE.BoxGeometry(0.1, 6, 8);
+            const leftPanel = new THREE.Mesh(panelGeo, metalMat);
+            leftPanel.position.set(WALL_LEFT, 3, 1);
+            leftPanel.castShadow = true;
+            leftPanel.receiveShadow = true;
+            cabinetGroup.add(leftPanel);
+
+            const rightPanel = new THREE.Mesh(panelGeo, metalMat);
+            rightPanel.position.set(WALL_RIGHT, 3, 1);
+            rightPanel.castShadow = true;
+            rightPanel.receiveShadow = true;
+            cabinetGroup.add(rightPanel);
+
+            const backFrame = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 0.1), metalMat);
+            backFrame.position.set(0, 3, WALL_BACK);
+            backFrame.receiveShadow = true;
+            cabinetGroup.add(backFrame);
+
+            const frontBar = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 0.2), metalMat);
+            frontBar.position.set(0, 1.35, RACK_FRONT_Z);
+            frontBar.castShadow = true;
+            cabinetGroup.add(frontBar);
+
+            const rampEndZ = RACK_FRONT_Z - 0.1; 
+            const rampLength = Math.abs(WALL_BACK - rampEndZ);
+            const rampGeo = new THREE.BoxGeometry(3.9, 0.1, rampLength);
+            const ramp = new THREE.Mesh(rampGeo, rampMat);
+            
+            const midZ = (rampEndZ + WALL_BACK) / 2;
+            const midY = getFloorY(midZ) - BALL_RADIUS - 0.05; 
+            
+            ramp.position.set(0, midY, midZ);
+            ramp.rotation.x = -Math.atan(RAMP_SLOPE); 
+            ramp.receiveShadow = true;
+            cabinetGroup.add(ramp);
+            
+            scene.add(cabinetGroup);
+        }
+
+        function createBasketballTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 256;
+            const context = canvas.getContext('2d');
+            context.fillStyle = '#cc5500'; context.fillRect(0, 0, 512, 256);
+            for (let i = 0; i < 20000; i++) {
+                const x = Math.random() * 512; const y = Math.random() * 256; const size = Math.random() * 1.5;
+                context.fillStyle = 'rgba(0,0,0,0.08)'; context.fillRect(x, y, size, size);
+                context.fillStyle = 'rgba(255,255,255,0.05)'; context.fillRect(x + 1, y + 1, size, size);
+            }
+            context.strokeStyle = '#111111'; context.lineWidth = 5; context.lineCap = 'round';
+            context.beginPath(); context.moveTo(0, 128); context.lineTo(512, 128); context.stroke();
+            context.beginPath(); context.moveTo(256, 0); context.lineTo(256, 256); context.stroke();
+            context.beginPath(); context.moveTo(64, 0); context.quadraticCurveTo(200, 128, 64, 256); context.stroke();
+            context.beginPath(); context.moveTo(448, 0); context.quadraticCurveTo(312, 128, 448, 256); context.stroke();
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function createHoop() {
+            const hoopGroup = new THREE.Group();
+            const boardMat = new THREE.MeshStandardMaterial({ map: createBackboardTexture(), roughness: 0.3, metalness: 0.1 });
+            backboard = new THREE.Mesh(new THREE.BoxGeometry(2.75, 1.8, 0.1), boardMat);
+            backboard.position.set(0, BACKBOARD_Y, BACKBOARD_Z - 0.05); 
+            backboard.receiveShadow = true;
+            hoopGroup.add(backboard);
+            rim = new THREE.Mesh(new THREE.TorusGeometry(RIM_RADIUS, RIM_THICKNESS, 16, 100), new THREE.MeshStandardMaterial({ color: RIM_COLOR, metalness: 0.2 }));
+            rim.rotation.x = Math.PI / 2;
+            rim.position.set(0, RIM_Y, RIM_Z); 
+            rim.castShadow = true;
+            hoopGroup.add(rim);
+            net = new THREE.Mesh(
+                new THREE.CylinderGeometry(RIM_RADIUS, RIM_RADIUS * 0.5, NET_HEIGHT, 16, 8, true), 
+                new THREE.MeshBasicMaterial({ color: 0xd1d1d1, wireframe: true, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+            );
+            net.position.set(0, RIM_Y - (NET_HEIGHT / 2), RIM_Z);
+            originalNetVertices = new Float32Array(net.geometry.attributes.position.array);
+            hoopGroup.add(net);
+            scene.add(hoopGroup);
+        }
+
+        function createMarkers() {
+            const ringGeo = new THREE.RingGeometry(0.14, 0.18, 32);
+            projectionMarker = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xff4500, transparent: true, opacity: 0.8, depthTest: false }));
+            projectionMarker.position.z = BACKBOARD_Z + 0.06;
+            projectionMarker.visible = false;
+            projectionMarker.renderOrder = 1000;
+            scene.add(projectionMarker);
+        }
+
+        function createBallRack() {
+            const texture = createBasketballTexture();
+            const ballGeo = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8, metalness: 0.05 });
+            for (let i = 0; i < 5; i++) {
+                const b = new THREE.Mesh(ballGeo, ballMat.clone());
+                b.position.set(-1.2 + (i * 0.6), getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
+                b.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+                b.userData = { velocity: new THREE.Vector3(0,0,0), spin: 0, hasScored: false, inNet: false };
+                b.castShadow = true;
+                scene.add(b);
+                balls.push(b);
+            }
+        }
+
+        function createTrajectoryObjects() {
+            const dotGeo = new THREE.SphereGeometry(0.045, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.85, depthTest: false });
+            for (let i = 0; i < MAX_DOTS; i++) {
+                const dot = new THREE.Mesh(dotGeo, dotMat);
+                dot.visible = false; dot.renderOrder = 999;
+                scene.add(dot);
+                trajectoryDots.push(dot);
+            }
+        }
+
+        function getMouseIn3DSpace(zDepth) {
+            const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+            vector.unproject(camera);
+            const dir = vector.sub(camera.position).normalize();
+            const distance = (zDepth - camera.position.z) / dir.z;
+            return camera.position.clone().add(dir.multiplyScalar(distance));
+        }
+
+        function calculateVelocityFromPull(ballPos, mouse3D) {
+            const pullVector = new THREE.Vector3().subVectors(ballPos, mouse3D);
+            const forwardFactor = (Math.max(0, pullVector.y) + Math.max(0, pullVector.z)) * PULL_POWER_FORWARD;
+            
+            return new THREE.Vector3(
+                pullVector.x * PULL_POWER_X, 
+                BASE_LIFT + (forwardFactor * FORWARD_Y_BOOST), 
+                -forwardFactor * FORWARD_Z_BOOST
+            );
+        }
+
+        function handleBallBallCollisions(ballA, index, collection) {
+            for (let i = index + 1; i < collection.length; i++) {
+                const ballB = collection[i];
+                if (ballB === heldBall) continue; 
+                const dist = ballA.position.distanceTo(ballB.position);
+                if (dist < BALL_DIAMETER) {
+                    const normal = new THREE.Vector3().subVectors(ballA.position, ballB.position).normalize();
+                    const relativeVelocity = new THREE.Vector3().subVectors(ballA.userData.velocity, ballB.userData.velocity);
+                    const velocityAlongNormal = relativeVelocity.dot(normal);
+                    const overlap = (BALL_DIAMETER - dist) / 2;
+                    ballA.position.add(normal.clone().multiplyScalar(overlap));
+                    ballB.position.sub(normal.clone().multiplyScalar(overlap));
+                    if (velocityAlongNormal < 0) {
+                        const impulse = (-(1 + 0.3) * velocityAlongNormal) / 2;
+                        const impulseVec = normal.multiplyScalar(impulse);
+                        ballA.userData.velocity.add(impulseVec);
+                        ballB.userData.velocity.sub(impulseVec);
+                    }
+                }
+            }
+        }
+
+        function handleCollisions(shot) {
+            const ball = shot.ball, velocity = shot.velocity, ballPos = ball.position;
+            const bbZ = backboard.position.z + 0.05, rimPos = rim.position;
+            const dx = ballPos.x - rimPos.x, dz = ballPos.z - rimPos.z;
+            const distToRimCenter = Math.sqrt(dx * dx + dz * dz);
+            
+            if (!ball.userData.hasScored && ballPos.y < RIM_Y + 0.15 && ballPos.y > RIM_Y - 0.2 && velocity.y < 0) {
+                if (distToRimCenter < RIM_RADIUS - RIM_THICKNESS - 0.05) {
+                    handleScored();
+                    ball.userData.hasScored = true; ball.userData.inNet = true;
+                    isNetWiggling = true; netWiggleTime = 0;
+                    velocity.x *= 0.15; velocity.z *= 0.15;
+                    return; 
+                }
+            }
+            if (ball.userData.inNet) {
+                velocity.x += (rimPos.x - ballPos.x) * 0.05;
+                velocity.z += (rimPos.z - ballPos.z) * 0.05;
+            }
+            if (ballPos.z < 0 && (ballPos.z - BALL_RADIUS) < bbZ && ballPos.z > (bbZ - 0.3) && Math.abs(ballPos.x) < 1.375 && Math.abs(ballPos.y - backboard.position.y) < 0.9) {
+                velocity.z *= -0.55; 
+                velocity.y = (velocity.y * 0.75) - (Math.abs(ball.userData.spin) * SPIN_FRICTION_FACTOR);
+                ballPos.z = bbZ + BALL_RADIUS + 0.01;
+                ball.userData.spin *= 0.2; 
+            }
+            const WALL_DAMPENING = 0.25;
+            if (ballPos.x - BALL_RADIUS < WALL_LEFT + 0.05) { ballPos.x = WALL_LEFT + 0.05 + BALL_RADIUS; velocity.x *= -WALL_DAMPENING; }
+            if (ballPos.x + BALL_RADIUS > WALL_RIGHT - 0.05) { ballPos.x = WALL_RIGHT - 0.05 - BALL_RADIUS; velocity.x *= -WALL_DAMPENING; }
+            if (ballPos.z - BALL_RADIUS < WALL_BACK + 0.05) { ballPos.z = WALL_BACK + 0.05 + BALL_RADIUS; velocity.z *= -WALL_DAMPENING; }
+            if (!ball.userData.inNet && Math.abs(ballPos.y - rimPos.y) < BALL_RADIUS + RIM_THICKNESS + 0.1) {
+                if (Math.sqrt(Math.pow(distToRimCenter - RIM_RADIUS, 2) + Math.pow(ballPos.y - rimPos.y, 2)) < BALL_RADIUS + RIM_THICKNESS) {
+                    const angle = Math.atan2(dz, dx);
+                    const normal = new THREE.Vector3(ballPos.x - (rimPos.x + Math.cos(angle) * RIM_RADIUS), ballPos.y - rimPos.y, ballPos.z - (rimPos.z + Math.sin(angle) * RIM_RADIUS)).normalize();
+                    velocity.sub(normal.clone().multiplyScalar(2 * velocity.dot(normal))).multiplyScalar(RIM_BOUNCE_MULT); 
+                    ballPos.add(normal.multiplyScalar(0.06));
+                    ball.userData.spin *= 0.5;
+                }
+            }
+            if (ball.userData.inNet && ballPos.y < rimPos.y - NET_HEIGHT) ball.userData.inNet = false;
+        }
+
+        function onMouseMove(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            const crosshair = document.getElementById('crosshair');
+            crosshair.style.left = e.clientX + 'px'; crosshair.style.top = e.clientY + 'px';
+            if (heldBall) {
+                const mouse3D = getMouseIn3DSpace(heldBall.position.z);
+                // Clamp position immediately so trajectory calculation starts from valid physics point
+                const targetX = THREE.MathUtils.clamp(mouse3D.x, WALL_LEFT + 0.2, WALL_RIGHT - 0.2);
+                if (!isPullingBack && (heldBall.position.y - mouse3D.y > 0.05)) isPullingBack = true;
+                if (!isPullingBack) heldBall.position.x = targetX;
+            }
+        }
+
+        function updateTrajectoryGuide(origin, velocity) {
+            const tempPos = origin.clone(), tempVel = velocity.clone(); 
+            let pBackboardY = null;
+            const WALL_LIMIT_LEFT = WALL_LEFT + 0.05 + BALL_RADIUS;
+            const WALL_LIMIT_RIGHT = WALL_RIGHT - 0.05 - BALL_RADIUS;
+
+            for (let i = 0; i < MAX_DOTS; i++) {
+                const dot = trajectoryDots[i];
+                dot.visible = true; 
+                dot.position.copy(tempPos); 
+                dot.scale.setScalar(1 - (i / MAX_DOTS) * 0.4);
+                
+                // Track backboard intersection for aiming circle
+                if (pBackboardY === null && tempPos.z <= BACKBOARD_Z) {
+                    pBackboardY = { x: tempPos.x, y: tempPos.y };
+                }
+                
+                // Advance physics
+                tempPos.add(tempVel); 
+                tempVel.y += GRAVITY * GLOBAL_SPEED_MULTIPLIER;
+
+                // Handle wall bounces in prediction to keep path accurate
+                if (tempPos.x < WALL_LIMIT_LEFT) { tempPos.x = WALL_LIMIT_LEFT; tempVel.x *= -0.25; }
+                if (tempPos.x > WALL_LIMIT_RIGHT) { tempPos.x = WALL_LIMIT_RIGHT; tempVel.x *= -0.25; }
+
+                if (tempPos.y < 1.0) { 
+                    for(let j = i + 1; j < MAX_DOTS; j++) trajectoryDots[j].visible = false; 
+                    break; 
+                }
+            }
+            
+            if (pBackboardY && isPullingBack) {
+                projectionMarker.visible = true; 
+                projectionMarker.position.set(pBackboardY.x, pBackboardY.y, BACKBOARD_Z + 0.06);
+            } else { 
+                projectionMarker.visible = false; 
+            }
+        }
+
+        function onMouseDown() {
+            if (heldBall) return;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(balls);
+            if (intersects.length > 0) {
+                heldBall = intersects[0].object;
+                heldBall.userData.velocity.set(0,0,0); heldBall.userData.hasScored = false; 
+                isPullingBack = false; document.getElementById('crosshair').classList.add('active');
+            }
+        }
+
+        function onMouseUp() {
+            if (!heldBall) return;
+            if (isPullingBack) {
+                const mouse3D = getMouseIn3DSpace(heldBall.position.z);
+                activeShots.push({ ball: heldBall, velocity: calculateVelocityFromPull(heldBall.position, mouse3D).multiplyScalar(GLOBAL_SPEED_MULTIPLIER) });
+                heldBall.userData.spin = Math.max(0, heldBall.position.y - mouse3D.y) * 0.1; 
+                balls = balls.filter(b => b !== heldBall);
+            }
+            isPullingBack = false; heldBall = null;
+            trajectoryDots.forEach(d => d.visible = false); projectionMarker.visible = false;
+            document.getElementById('crosshair').classList.remove('active');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (projectionMarker?.visible) {
+                const pulse = 1 + Math.sin(Date.now() * 0.015) * 0.25;
+                projectionMarker.scale.set(pulse, pulse, pulse);
+            }
+            if (isNetWiggling) {
+                netWiggleTime += 0.05;
+                const posAttr = net.geometry.attributes.position;
+                for (let i = 0; i < posAttr.count; i++) {
+                    const ox = originalNetVertices[i * 3], oy = originalNetVertices[i * 3 + 1], oz = originalNetVertices[i * 3 + 2];
+                    const intensity = Math.exp(-Math.pow((RIM_Y - (oy + net.position.y)) - (netWiggleTime * 0.6), 2) / 0.08);
+                    const bulge = 1 + (intensity * 0.35);
+                    posAttr.setXYZ(i, ox * bulge, oy, oz * bulge);
+                }
+                posAttr.needsUpdate = true;
+                if (netWiggleTime > 2.0) isNetWiggling = false;
+            }
+            if (heldBall && isPullingBack) updateTrajectoryGuide(heldBall.position, calculateVelocityFromPull(heldBall.position, getMouseIn3DSpace(heldBall.position.z)).multiplyScalar(GLOBAL_SPEED_MULTIPLIER));
+            for (let i = activeShots.length - 1; i >= 0; i--) {
+                const shot = activeShots[i], ball = shot.ball, vel = shot.velocity;
+                const floorY = getFloorY(ball.position.z);
+                if (vel.y <= 0 && ball.position.y <= floorY && ball.position.z < RACK_FRONT_LIMIT) {
+                    ball.position.y = floorY; ball.userData.velocity.set(vel.x, 0, Math.max(0.04, vel.z));
+                    ball.userData.spin = 0; balls.push(ball); activeShots.splice(i, 1);
+                } else {
+                    if (ball.userData.inNet) vel.multiplyScalar(NET_FRICTION);
+                    ball.position.add(vel); vel.y += (ball.userData.inNet ? GRAVITY * 0.4 : GRAVITY) * GLOBAL_SPEED_MULTIPLIER;
+                    if (!ball.userData.inNet) { ball.rotation.x += ball.userData.spin; ball.userData.spin *= 0.995; }
+                    handleCollisions(shot);
+                    if (ball.position.y < -1) {
+                        ball.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
+                        ball.userData.velocity.set(0,0,0); ball.userData.hasScored = false;
+                        balls.push(ball); activeShots.splice(i, 1);
+                    }
+                }
+            }
+            balls.forEach((ball, idx) => {
+                if (ball === heldBall) return;
+                const vel = ball.userData.velocity, lastPos = ball.position.clone();
+                if (ball.position.z < RACK_FRONT_LIMIT) {
+                    ball.position.y = getFloorY(ball.position.z); vel.z = (vel.z + 0.001) * 0.97; vel.x *= 0.90;
+                } else {
+                    ball.position.z = RACK_FRONT_LIMIT; ball.position.y = getFloorY(RACK_FRONT_LIMIT); vel.z *= 0.1; vel.x *= 0.8;
+                }
+                ball.position.add(vel);
+                if (ball.position.x < WALL_LEFT + 0.15) { ball.position.x = WALL_LEFT + 0.15; vel.x *= -0.5; }
+                if (ball.position.x > WALL_RIGHT - 0.15) { ball.position.x = WALL_RIGHT - 0.15; vel.x *= -0.5; }
+                handleBallBallCollisions(ball, idx, balls);
+                if (ball.position.z > RACK_FRONT_LIMIT) ball.position.z = RACK_FRONT_LIMIT;
+                ball.position.y = getFloorY(ball.position.z);
+                const deltaPos = new THREE.Vector3().subVectors(ball.position, lastPos);
+                if (deltaPos.length() > 0) { ball.rotation.z -= deltaPos.x / BALL_RADIUS; ball.rotation.x += deltaPos.z / BALL_RADIUS; }
+            });
+            renderer.render(scene, camera);
+        }
+
+        function handleScored() {
+            score += 2; 
+            document.getElementById('score').innerText = score;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
