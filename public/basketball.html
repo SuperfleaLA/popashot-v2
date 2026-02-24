@@ -395,7 +395,6 @@
             crosshair.style.left = e.clientX + 'px'; crosshair.style.top = e.clientY + 'px';
             if (heldBall) {
                 const mouse3D = getMouseIn3DSpace(heldBall.position.z);
-                // Clamp position immediately so trajectory calculation starts from valid physics point
                 const targetX = THREE.MathUtils.clamp(mouse3D.x, WALL_LEFT + 0.2, WALL_RIGHT - 0.2);
                 if (!isPullingBack && (heldBall.position.y - mouse3D.y > 0.05)) isPullingBack = true;
                 if (!isPullingBack) heldBall.position.x = targetX;
@@ -414,16 +413,13 @@
                 dot.position.copy(tempPos); 
                 dot.scale.setScalar(1 - (i / MAX_DOTS) * 0.4);
                 
-                // Track backboard intersection for aiming circle
                 if (pBackboardY === null && tempPos.z <= BACKBOARD_Z) {
                     pBackboardY = { x: tempPos.x, y: tempPos.y };
                 }
                 
-                // Advance physics
                 tempPos.add(tempVel); 
                 tempVel.y += GRAVITY * GLOBAL_SPEED_MULTIPLIER;
 
-                // Handle wall bounces in prediction to keep path accurate
                 if (tempPos.x < WALL_LIMIT_LEFT) { tempPos.x = WALL_LIMIT_LEFT; tempVel.x *= -0.25; }
                 if (tempPos.x > WALL_LIMIT_RIGHT) { tempPos.x = WALL_LIMIT_RIGHT; tempVel.x *= -0.25; }
 
