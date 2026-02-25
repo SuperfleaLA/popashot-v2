@@ -15,17 +15,43 @@
             transition: border-color 0.2s;
         }
         #crosshair.active { border-color: #fb923c; border-style: solid; border-width: 3px; }
+        .digital-font { font-family: 'Courier New', Courier, monospace; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
         <div id="crosshair"></div>
-        <div class="absolute top-5 left-5 bg-black/60 p-4 rounded-xl border border-white/20 text-white pointer-events-auto backdrop-blur-md">
+        
+        <!-- Score and Timer HUD -->
+        <div class="absolute top-5 left-5 bg-black/60 p-4 rounded-xl border border-white/20 text-white pointer-events-auto backdrop-blur-md min-w-[200px]">
             <h1 class="text-xl font-bold uppercase tracking-widest text-orange-500 italic">Arcade Pop-A-Shot</h1>
-            <p class="text-[10px] text-gray-300 mt-1 uppercase">Grab a ball • Pull back to launch • Precision Targeting</p>
-            <div class="mt-4 flex justify-between items-center font-mono">
-                <span class="text-lg">SCORE: <span id="score" class="text-orange-400">0</span></span>
+            <div class="mt-4 flex flex-col gap-2 font-mono">
+                <div class="flex justify-between items-center text-lg">
+                    <span>SCORE:</span>
+                    <span id="score" class="text-orange-400 font-bold">0</span>
+                </div>
+                <div class="flex justify-between items-center text-lg">
+                    <span>TIME:</span>
+                    <span id="timer" class="text-red-400 font-bold">30</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Countdown Overlay -->
+        <div id="countdown-overlay" class="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-auto">
+            <div id="countdown-text" class="text-9xl font-black text-orange-500 italic drop-shadow-[0_0_20px_rgba(251,146,60,0.8)]">READY?</div>
+        </div>
+
+        <!-- Game Over Modal -->
+        <div id="game-over-modal" class="hidden absolute inset-0 flex items-center justify-center bg-black/80 pointer-events-auto">
+            <div class="bg-zinc-900 border-2 border-orange-500 p-10 rounded-2xl text-center shadow-2xl max-w-sm w-full">
+                <h2 class="text-4xl font-bold text-white mb-2 uppercase italic">Buzzer Beater!</h2>
+                <p class="text-gray-400 mb-6 uppercase tracking-widest">Final Score</p>
+                <div id="final-score-text" class="text-7xl font-mono text-orange-500 mb-8 font-black">0</div>
+                <button onclick="resetGame()" class="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter">
+                    Play Again
+                </button>
             </div>
         </div>
     </div>
@@ -40,12 +66,16 @@
         let isNetWiggling = false;
         let originalNetVertices = [];
 
+        // NEW: Game State Variables
+        let timeLeft = 30;
+        let isGameActive = false;
+        let gameTimerInterval = null;
+
         // PHYSICS CONSTANTS
         const GRAVITY = -0.0022; 
         const PULL_POWER_X = 0.06; 
         const PULL_POWER_FORWARD = 0.0675; 
         
-        // LAUNCH ANGLE ADJUSTMENTS
         const BASE_LIFT = 0.14; 
         const FORWARD_Y_BOOST = 1.25; 
         const FORWARD_Z_BOOST = 2.45; 
@@ -86,6 +116,69 @@
 
         function getFloorY(z) {
             return RAMP_BASE_Y + ((z - RACK_FRONT_LIMIT) * RAMP_SLOPE) + BALL_RADIUS;
+        }
+
+        // NEW: Game Flow Logic
+        function startCountdown() {
+            const overlay = document.getElementById('countdown-overlay');
+            const text = document.getElementById('countdown-text');
+            let count = 3;
+            
+            overlay.classList.remove('hidden');
+            text.innerText = "READY?";
+            
+            const countInterval = setInterval(() => {
+                if (count > 0) {
+                    text.innerText = count;
+                    count--;
+                } else if (count === 0) {
+                    text.innerText = "START!";
+                    count--;
+                } else {
+                    clearInterval(countInterval);
+                    overlay.classList.add('hidden');
+                    beginGame();
+                }
+            }, 1000);
+        }
+
+        function beginGame() {
+            isGameActive = true;
+            timeLeft = 30;
+            document.getElementById('timer').innerText = timeLeft;
+            
+            gameTimerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer').innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            isGameActive = false;
+            clearInterval(gameTimerInterval);
+            document.getElementById('game-over-modal').classList.remove('hidden');
+            document.getElementById('final-score-text').innerText = score;
+        }
+
+        function resetGame() {
+            score = 0;
+            document.getElementById('score').innerText = score;
+            document.getElementById('game-over-modal').classList.add('hidden');
+            
+            // Move any airborne balls back to rack
+            activeShots.forEach(shot => {
+                const b = shot.ball;
+                b.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
+                b.userData.velocity.set(0,0,0);
+                b.userData.hasScored = false;
+                balls.push(b);
+            });
+            activeShots = [];
+            
+            startCountdown();
         }
 
         function init() {
@@ -129,6 +222,7 @@
             window.addEventListener('mouseup', onMouseUp);
 
             animate();
+            startCountdown(); // Start on load
         }
 
         function createHardwoodTexture() {
@@ -438,7 +532,7 @@
         }
 
         function onMouseDown() {
-            if (heldBall) return;
+            if (heldBall || !isGameActive) return; // Only allow grabbing if game is active
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(balls);
             if (intersects.length > 0) {
@@ -450,7 +544,7 @@
 
         function onMouseUp() {
             if (!heldBall) return;
-            if (isPullingBack) {
+            if (isPullingBack && isGameActive) {
                 const mouse3D = getMouseIn3DSpace(heldBall.position.z);
                 activeShots.push({ ball: heldBall, velocity: calculateVelocityFromPull(heldBall.position, mouse3D).multiplyScalar(GLOBAL_SPEED_MULTIPLIER) });
                 heldBall.userData.spin = Math.max(0, heldBall.position.y - mouse3D.y) * 0.1; 
@@ -519,6 +613,7 @@
         }
 
         function handleScored() {
+            if (!isGameActive) return;
             score += 2; 
             document.getElementById('score').innerText = score;
         }
