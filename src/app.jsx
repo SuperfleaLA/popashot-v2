@@ -45,6 +45,7 @@ const App = () => {
   const isUserEliminated = userObject?.isEliminated;
   const prizePool = INITIAL_PLAYERS * (selectedBuyIn || 0) * (1 - HOUSE_RAKE);
 
+  // Listen for score message from basketball.html iframe
   useEffect(() => {
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'GAME_COMPLETE') {
@@ -183,28 +184,19 @@ const App = () => {
     const survivalTargets = { 1: 6, 2: 4, 3: 2, 4: 1 };
     const targetCount = survivalTargets[currentRound];
     
-    // Sort descending by total score
     const sortedActive = [...activePlayersBeforeCut].sort((a, b) => b.totalPoints - a.totalPoints);
-
-    // Determine the threshold score. 
-    // If target is top 6, the score of the 6th person is the baseline.
     const thresholdPlayer = sortedActive[targetCount - 1];
     const thresholdScore = thresholdPlayer ? thresholdPlayer.totalPoints : 0;
 
     const finalPlayers = playersAtEndOfRound.map((p) => {
       if (p.isEliminated) return p;
-      
-      // RULE: All participants with a score equal to or higher than 
-      // the lowest total score that moves on survive.
       const survives = p.totalPoints >= thresholdScore;
-
       if (!survives) {
         return { ...p, isEliminated: true, eliminatedAt: currentRound };
       }
       return p;
     });
 
-    // Re-rank for display
     const rankedList = [...finalPlayers].sort((a, b) => {
       if (a.isEliminated && !b.isEliminated) return 1;
       if (!a.isEliminated && b.isEliminated) return -1;
@@ -215,9 +207,7 @@ const App = () => {
 
     const survivors = rankedList.filter(p => !p.isEliminated);
     
-    // Game ends if we finished round 4 OR if only one person (or group of tied winners) is left.
     if (currentRound === 4 || survivors.length <= 1) {
-      // Logic for split pots if there's a tie for first place at the very end
       const winners = survivors;
       if (winners.some(w => w.name.includes("You"))) {
         const share = prizePool / winners.length;
@@ -385,7 +375,7 @@ const App = () => {
           </div>
         )}
 
-        {/* GAME FRAME */}
+        {/* GAME FRAME — loads basketball.html in an iframe */}
         {gameState === 'playing_game' && (
           <div className="animate-in zoom-in duration-300">
             <div className="bg-neutral-900 border border-neutral-800 p-3 rounded-t-3xl border-b-0 flex justify-between items-center px-6">
@@ -396,7 +386,7 @@ const App = () => {
               <button onClick={() => finishShooting()} className="text-[10px] font-black uppercase text-neutral-500 hover:text-white transition-colors">Skip Round</button>
             </div>
             <div className="aspect-video w-full bg-black rounded-b-3xl border border-neutral-800 overflow-hidden shadow-2xl">
-              <iframe src="basketball_game.html" className="w-full h-full border-none" title="Basketball Round" />
+              <iframe src="/basketball.html" className="w-full h-full border-none" title="Basketball Round" />
             </div>
           </div>
         )}
@@ -451,7 +441,6 @@ const App = () => {
               </div>
             </div>
 
-            {/* Tie Alert (Visible if survivors > target) */}
             {players.filter(p => !p.isEliminated).length > {1:6, 2:4, 3:2, 4:1}[currentRound] && (
                <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-3xl flex items-center gap-3 text-orange-500">
                  <AlertCircle size={20} />

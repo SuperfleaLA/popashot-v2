@@ -49,7 +49,10 @@
                 <h2 class="text-4xl font-bold text-white mb-2 uppercase italic">Buzzer Beater!</h2>
                 <p class="text-gray-400 mb-6 uppercase tracking-widest">Final Score</p>
                 <div id="final-score-text" class="text-7xl font-mono text-orange-500 mb-8 font-black">0</div>
-                <button onclick="resetGame()" class="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter">
+                <button onclick="submitScoreAndReturn()" class="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter mb-3">
+                    Submit Score
+                </button>
+                <button onclick="resetGame()" class="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 rounded-lg text-lg transition-transform active:scale-95 uppercase tracking-tighter">
                     Play Again
                 </button>
             </div>
@@ -66,7 +69,6 @@
         let isNetWiggling = false;
         let originalNetVertices = [];
 
-        // NEW: Game State Variables
         let timeLeft = 30;
         let isGameActive = false;
         let gameTimerInterval = null;
@@ -118,7 +120,19 @@
             return RAMP_BASE_Y + ((z - RACK_FRONT_LIMIT) * RAMP_SLOPE) + BALL_RADIUS;
         }
 
-        // NEW: Game Flow Logic
+        // ============================================================
+        // SCORE SUBMISSION — sends score back to the React app
+        // ============================================================
+        function submitScoreAndReturn() {
+            // Send score to parent window (the React iframe)
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'GAME_COMPLETE', score: score }, '*');
+            } else {
+                // Fallback: if opened directly (not in iframe), use URL params
+                window.location.href = `/?score=${score}`;
+            }
+        }
+
         function startCountdown() {
             const overlay = document.getElementById('countdown-overlay');
             const text = document.getElementById('countdown-text');
@@ -168,7 +182,6 @@
             document.getElementById('score').innerText = score;
             document.getElementById('game-over-modal').classList.add('hidden');
             
-            // Move any airborne balls back to rack
             activeShots.forEach(shot => {
                 const b = shot.ball;
                 b.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
@@ -222,7 +235,7 @@
             window.addEventListener('mouseup', onMouseUp);
 
             animate();
-            startCountdown(); // Start on load
+            startCountdown();
         }
 
         function createHardwoodTexture() {
@@ -532,7 +545,7 @@
         }
 
         function onMouseDown() {
-            if (heldBall || !isGameActive) return; // Only allow grabbing if game is active
+            if (heldBall || !isGameActive) return;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(balls);
             if (intersects.length > 0) {
