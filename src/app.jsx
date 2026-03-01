@@ -232,59 +232,69 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white p-4 md:p-8 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="h-screen bg-neutral-950 text-white overflow-hidden p-4 md:p-6 font-sans flex flex-col items-center justify-center">
+      <div className="w-full max-w-4xl h-full flex flex-col justify-center">
         
-        {/* SELECTION UI */}
+        {/* SELECTION UI - Optimized for single-screen view */}
         {gameState === 'selection' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 py-6">
-            <div className="flex justify-between items-center bg-neutral-900/50 border border-neutral-800 p-4 rounded-3xl mb-12">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col h-full max-h-[800px]">
+            {/* Header row - compact */}
+            <div className="flex justify-between items-center bg-neutral-900/50 border border-neutral-800 p-3 rounded-2xl mb-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
-                  <Wallet size={20} />
+                <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center text-white rotate-3">
+                  <Dribbble size={18} />
                 </div>
-                <div>
-                  <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Account Balance</p>
-                  <p className="text-xl font-black font-mono text-emerald-400">${balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                </div>
+                <h1 className="text-xl font-black italic uppercase tracking-tighter">Elimination Golf</h1>
+              </div>
+              <div className="flex items-center gap-2 pr-2">
+                <Wallet size={14} className="text-emerald-500" />
+                <p className="text-lg font-black font-mono text-emerald-400">${balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
               </div>
             </div>
 
-            <div className="text-center mb-12">
-              <div className="w-20 h-20 bg-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-3 shadow-2xl shadow-orange-900/40">
-                <Dribbble size={48} className="text-white" />
-              </div>
-              <h1 className="text-6xl font-black tracking-tighter italic uppercase mb-2 text-white">Elimination Golf</h1>
-              <p className="text-neutral-500 font-bold tracking-widest uppercase text-xs">The High-Stakes Survival Tournament</p>
+            {/* Visual Hero - Scaled down */}
+            <div className="text-center mb-6 shrink-0">
+               <p className="text-neutral-500 font-bold tracking-[0.2em] uppercase text-[10px] mb-2">The High-Stakes Survival Tournament</p>
+               <h2 className="text-4xl font-black italic tracking-tighter uppercase text-white leading-none">Select Your Entry</h2>
             </div>
 
-            <div className="grid gap-4 max-w-md mx-auto">
+            {/* Options Grid - Two columns to reduce height */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 overflow-y-auto px-1 py-1 custom-scrollbar">
               {CONTEST_OPTIONS.map((amount) => (
                 <button
                   key={amount}
                   disabled={balance < amount}
                   onClick={() => handleSelectContest(amount)}
-                  className={`group bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 p-6 rounded-3xl flex justify-between items-center transition-all active:scale-95 ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                  className={`group bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 p-4 rounded-2xl flex justify-between items-center transition-all active:scale-95 ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-neutral-950 rounded-xl flex items-center justify-center text-emerald-500">
-                      <DollarSign size={24} />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-neutral-950 rounded-xl flex items-center justify-center text-emerald-500">
+                      <DollarSign size={20} />
                     </div>
                     <div className="text-left">
-                      <p className="text-2xl font-black">${amount} Entry</p>
-                      <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Prize: ${(amount * 10 * (1-HOUSE_RAKE)).toFixed(0)}</p>
+                      <p className="text-xl font-black">${amount}</p>
+                      <p className="text-[9px] text-neutral-500 font-black uppercase tracking-widest">Win Up To ${(amount * 10 * (1-HOUSE_RAKE)).toFixed(0)}</p>
                     </div>
                   </div>
-                  <ChevronRight className="text-neutral-700 group-hover:text-orange-500 transition-colors" />
+                  <ChevronRight size={18} className="text-neutral-700 group-hover:text-orange-500 transition-colors" />
                 </button>
               ))}
+            </div>
+
+            {/* Footer / Status */}
+            <div className="mt-auto pt-4 border-t border-neutral-900 text-center">
+               <div className="flex items-center justify-center gap-4 text-neutral-600 text-[10px] font-black uppercase tracking-widest">
+                  <div className="flex items-center gap-1"><Users size={12}/> 10 Players</div>
+                  <div className="flex items-center gap-1"><TrendingDown size={12}/> 4 Rounds</div>
+                  <div className="flex items-center gap-1"><Trophy size={12}/> 1 Winner</div>
+               </div>
             </div>
           </div>
         )}
 
         {/* WAITING ROOM */}
         {gameState === 'waiting' && (
-          <div className="flex flex-col items-center justify-center py-20 animate-in zoom-in duration-300">
+          <div className="flex flex-col items-center justify-center h-full animate-in zoom-in duration-300">
             <div className="relative w-40 h-40 mb-8">
               <svg className="w-full h-full transform -rotate-90">
                 <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-neutral-900" />
@@ -299,72 +309,72 @@ const App = () => {
                 <span className="text-[10px] text-neutral-500 font-black uppercase tracking-tighter">Players</span>
               </div>
             </div>
-            <h2 className="text-3xl font-black uppercase italic tracking-tight">Joining Lobby...</h2>
+            <h2 className="text-3xl font-black uppercase italic tracking-tight text-center">Joining Lobby...</h2>
           </div>
         )}
 
         {/* STANDING ROOM */}
         {gameState === 'standing' && (
-          <div className="animate-in fade-in duration-500">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-[40px] p-8 md:p-12 relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
-                <Zap size={200} className="text-orange-500" />
+          <div className="animate-in fade-in duration-500 h-full flex flex-col">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                <Zap size={160} className="text-orange-500" />
               </div>
-              <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-10">
+              <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
                 <div className="text-center md:text-left">
-                  <span className="bg-orange-600/20 text-orange-500 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-orange-500/30 mb-4 inline-block">
+                  <span className="bg-orange-600/20 text-orange-500 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-orange-500/30 mb-3 inline-block">
                     Tournament Round {currentRound}
                   </span>
-                  <h2 className="text-6xl font-black italic uppercase leading-none mb-2 tracking-tighter">
+                  <h2 className="text-5xl font-black italic uppercase leading-none mb-1 tracking-tighter">
                     {isUserEliminated ? "Spectating" : "Standing Room"}
                   </h2>
-                  <p className="text-neutral-400 font-medium">
-                    {isUserEliminated ? "Watching the remaining survivors." : "Wait for others or bypass to start now."}
+                  <p className="text-neutral-400 text-sm font-medium">
+                    {isUserEliminated ? "Watching the remaining survivors." : "Wait for others or bypass to start."}
                   </p>
                 </div>
-                <div className="flex flex-col items-center gap-4 min-w-[200px]">
+                <div className="flex flex-col items-center gap-3 min-w-[180px]">
                   <div className="text-center">
-                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-tighter mb-1">Round Starts In</p>
-                    <p className="text-5xl font-mono font-black text-orange-500">:{lobbyTimer.toString().padStart(2, '0')}</p>
+                    <p className="text-[9px] text-neutral-500 font-black uppercase tracking-tighter mb-0.5">Round Starts In</p>
+                    <p className="text-4xl font-mono font-black text-orange-500">:{lobbyTimer.toString().padStart(2, '0')}</p>
                   </div>
                   
                   {!isUserEliminated ? (
                     <button 
                       onClick={handleUserReady}
                       disabled={userReady}
-                      className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 ${
+                      className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 ${
                         userReady ? 'bg-emerald-600/20 text-emerald-500 border border-emerald-500/30' : 'bg-orange-600 hover:bg-orange-500 text-white shadow-xl shadow-orange-900/40'
                       }`}
                     >
-                      {userReady ? <CheckCircle2 size={24} className="animate-bounce" /> : <Play size={24} />}
+                      {userReady ? <CheckCircle2 size={20} className="animate-bounce" /> : <Play size={20} />}
                       {userReady ? 'Starting...' : 'Enter Round'}
                     </button>
                   ) : (
                     <button 
                       onClick={exitToLobby}
-                      className="w-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 border border-neutral-700"
+                      className="w-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 py-4 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 border border-neutral-700"
                     >
-                      <LogOut size={20} />
+                      <LogOut size={18} />
                       Exit Game
                     </button>
                   )}
                   
-                  <p className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">{readyCount}/10 Players Ready</p>
+                  <p className="text-[9px] text-neutral-600 font-bold uppercase tracking-widest">{readyCount}/10 Players Ready</p>
                 </div>
               </div>
 
-              <div className="mt-12 grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="mt-auto grid grid-cols-2 md:grid-cols-5 gap-3 overflow-y-auto custom-scrollbar pr-1">
                 {players.filter(p => !p.isEliminated).map((p, i) => {
                    const isReady = i < readyCount;
                    return (
-                    <div key={p.id} className={`p-4 rounded-2xl border transition-all ${
+                    <div key={p.id} className={`p-3 rounded-xl border transition-all ${
                       isReady ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-neutral-950/50 border-neutral-800'
                     }`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <UserIcon size={14} className={isReady ? 'text-emerald-500' : 'text-neutral-700'} />
-                        {isReady && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <UserIcon size={12} className={isReady ? 'text-emerald-500' : 'text-neutral-700'} />
+                        {isReady && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                       </div>
-                      <p className={`text-xs font-bold truncate ${isReady ? 'text-white' : 'text-neutral-600'}`}>
+                      <p className={`text-[11px] font-bold truncate ${isReady ? 'text-white' : 'text-neutral-600'}`}>
                         {p.name}
                       </p>
                     </div>
@@ -377,15 +387,15 @@ const App = () => {
 
         {/* GAME FRAME — loads basketball.html in an iframe */}
         {gameState === 'playing_game' && (
-          <div className="animate-in zoom-in duration-300">
-            <div className="bg-neutral-900 border border-neutral-800 p-3 rounded-t-3xl border-b-0 flex justify-between items-center px-6">
+          <div className="animate-in zoom-in duration-300 h-full flex flex-col">
+            <div className="bg-neutral-900 border border-neutral-800 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Live Round {currentRound}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Live Round {currentRound}</span>
               </div>
-              <button onClick={() => finishShooting()} className="text-[10px] font-black uppercase text-neutral-500 hover:text-white transition-colors">Skip Round</button>
+              <button onClick={() => finishShooting()} className="text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-colors">Skip Round</button>
             </div>
-            <div className="aspect-video w-full bg-black rounded-b-3xl border border-neutral-800 overflow-hidden shadow-2xl">
+            <div className="flex-grow w-full bg-black rounded-b-2xl border border-neutral-800 overflow-hidden shadow-2xl min-h-[400px]">
               <iframe src="/basketball.html" className="w-full h-full border-none" title="Basketball Round" />
             </div>
           </div>
@@ -393,87 +403,80 @@ const App = () => {
 
         {/* CUT REVEAL DELAY */}
         {gameState === 'cut_reveal_delay' && (
-          <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center py-20 text-center">
-            <Loader2 className="animate-spin text-orange-500 mb-6" size={60} />
-            <h2 className="text-4xl font-black italic uppercase tracking-tighter">Calculating Results</h2>
-            <p className="text-neutral-500 font-bold uppercase text-[10px] tracking-widest mt-2">Checking for ties and processing scores...</p>
+          <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center h-full text-center">
+            <Loader2 className="animate-spin text-orange-500 mb-6" size={48} />
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter">Calculating Results</h2>
+            <p className="text-neutral-500 font-bold uppercase text-[9px] tracking-widest mt-2">Checking for ties and processing scores...</p>
           </div>
         )}
 
         {/* POST-ROUND SUMMARY */}
         {gameState === 'post_round' && (
-          <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-center bg-neutral-900 p-8 rounded-[40px] border border-neutral-800 gap-8">
+          <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
+            <div className="flex flex-col md:flex-row justify-between items-center bg-neutral-900 p-6 rounded-[32px] border border-neutral-800 gap-6 shrink-0">
               <div>
-                <h2 className="text-5xl font-black italic tracking-tighter uppercase leading-none">Round {currentRound} Summary</h2>
+                <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Round {currentRound} Summary</h2>
                 {isUserEliminated && userObject?.eliminatedAt === currentRound ? (
-                  <p className="text-red-500 font-black uppercase text-xs tracking-widest mt-2">You were eliminated this round.</p>
+                  <p className="text-red-500 font-black uppercase text-[10px] tracking-widest mt-1">You were eliminated this round.</p>
                 ) : isUserEliminated ? (
-                  <p className="text-neutral-500 font-black uppercase text-xs tracking-widest mt-2">Watching as a spectator.</p>
+                  <p className="text-neutral-500 font-black uppercase text-[10px] tracking-widest mt-1">Watching as a spectator.</p>
                 ) : (
-                  <p className="text-emerald-500 font-black uppercase text-xs tracking-widest mt-2 flex items-center gap-2">
-                    <CheckCircle2 size={16} /> You survived the cut!
+                  <p className="text-emerald-500 font-black uppercase text-[10px] tracking-widest mt-1 flex items-center gap-2">
+                    <CheckCircle2 size={14} /> You survived the cut!
                   </p>
                 )}
               </div>
               
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <p className="text-[10px] font-black uppercase text-neutral-500 mb-1">Next Round In</p>
-                  <p className="font-mono font-bold text-3xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
+                  <p className="text-[9px] font-black uppercase text-neutral-500 mb-0.5">Next Round In</p>
+                  <p className="font-mono font-bold text-2xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
                 </div>
                 
                 {!isUserEliminated ? (
                   <button 
                     onClick={proceedToNextRound}
-                    className="bg-white text-black hover:bg-neutral-200 px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-white/10"
+                    className="bg-white text-black hover:bg-neutral-200 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-white/10 text-xs"
                   >
-                    Continue <ArrowRight size={20} />
+                    Continue <ArrowRight size={16} />
                   </button>
                 ) : (
                   <button 
                     onClick={exitToLobby}
-                    className="bg-red-600 text-white hover:bg-red-500 px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-900/40"
+                    className="bg-red-600 text-white hover:bg-red-500 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-900/40 text-xs"
                   >
-                    Exit Tournament <LogOut size={20} />
+                    Exit Tournament <LogOut size={16} />
                   </button>
                 )}
               </div>
             </div>
 
-            {players.filter(p => !p.isEliminated).length > {1:6, 2:4, 3:2, 4:1}[currentRound] && (
-               <div className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-3xl flex items-center gap-3 text-orange-500">
-                 <AlertCircle size={20} />
-                 <p className="text-xs font-black uppercase tracking-widest">Tie detected! Extra players moved on to next round.</p>
-               </div>
-            )}
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-[40px] overflow-hidden shadow-2xl">
-              <div className="grid grid-cols-12 bg-neutral-800/50 p-6 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
+              <div className="grid grid-cols-12 bg-neutral-800/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-500 shrink-0">
                 <div className="col-span-1">Rank</div>
                 <div className="col-span-6">Player</div>
-                <div className="col-span-2 text-center">RD {currentRound} Score</div>
-                <div className="col-span-3 text-right">Total Points</div>
+                <div className="col-span-2 text-center">Score</div>
+                <div className="col-span-3 text-right">Total</div>
               </div>
-              <div className="divide-y divide-neutral-800/50">
+              <div className="divide-y divide-neutral-800/50 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
-                  <div key={p.id} className={`grid grid-cols-12 p-6 items-center transition-all ${
+                  <div key={p.id} className={`grid grid-cols-12 p-4 items-center transition-all ${
                     p.isEliminated ? 'opacity-30 grayscale bg-black/20' : 'hover:bg-neutral-800/20'
                   }`}>
-                    <div className="col-span-1 font-mono text-neutral-600">{idx + 1}</div>
-                    <div className="col-span-6 flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${p.name.includes("You") ? "bg-orange-600" : "bg-neutral-800"}`}>
-                        <UserIcon size={18} className="text-white" />
+                    <div className="col-span-1 font-mono text-[10px] text-neutral-600">{idx + 1}</div>
+                    <div className="col-span-6 flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-600" : "bg-neutral-800"}`}>
+                        <UserIcon size={14} className="text-white" />
                       </div>
-                      <span className={`font-black uppercase tracking-tight text-lg ${p.name.includes("You") ? (p.isEliminated ? "text-red-400" : "text-orange-500") : ""}`}>
+                      <span className={`font-black uppercase tracking-tight text-sm ${p.name.includes("You") ? (p.isEliminated ? "text-red-400" : "text-orange-500") : ""}`}>
                         {p.name}
                       </span>
-                      {p.isEliminated && p.eliminatedAt === currentRound && <span className="text-[8px] bg-red-600/20 text-red-500 px-2 py-0.5 rounded-md font-black uppercase">Cut</span>}
+                      {p.isEliminated && p.eliminatedAt === currentRound && <span className="text-[7px] bg-red-600/20 text-red-500 px-1.5 py-0.5 rounded font-black uppercase ml-1">Cut</span>}
                     </div>
-                    <div className="col-span-2 text-center font-bold text-white text-xl">
+                    <div className="col-span-2 text-center font-bold text-white text-base">
                       {p.points[currentRound - 1] ?? 0}
                     </div>
-                    <div className="col-span-3 text-right font-black text-2xl font-mono text-orange-500">
+                    <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">
                       {p.totalPoints}
                     </div>
                   </div>
@@ -485,98 +488,86 @@ const App = () => {
 
         {/* FINISHED SCREEN */}
         {gameState === 'finished' && (
-          <div className="animate-in zoom-in duration-500 space-y-8">
-            <div className="bg-neutral-900 border-2 border-orange-600/50 rounded-[40px] p-12 text-center shadow-2xl overflow-hidden relative">
+          <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
+            <div className="bg-neutral-900 border-2 border-orange-600/50 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-50" />
               
-              <Trophy size={100} className="mx-auto text-orange-500 mb-6 drop-shadow-[0_0_20px_rgba(249,115,22,0.5)]" />
+              <Trophy size={60} className="mx-auto text-orange-500 mb-4 drop-shadow-[0_0_20px_rgba(249,115,22,0.5)]" />
               
-              <div className="mb-8">
-                <h1 className="text-2xl text-neutral-400 font-black uppercase tracking-widest mb-2">
+              <div className="mb-4">
+                <h1 className="text-[10px] text-neutral-400 font-black uppercase tracking-widest mb-1">
                   {players.filter(p => !p.isEliminated).length > 1 ? "Joint Champions" : "Tournament Champion"}
                 </h1>
-                <div className="flex flex-col items-center justify-center gap-2">
+                <div className="flex flex-col items-center justify-center gap-1">
                   {players.filter(p => !p.isEliminated).map(winner => (
-                    <div key={winner.id} className="flex items-center gap-4">
-                      <Star className="text-orange-500 fill-orange-500" size={16} />
-                      <p className="text-6xl font-black italic tracking-tighter uppercase text-white leading-tight">
+                    <div key={winner.id} className="flex items-center gap-3">
+                      <Star className="text-orange-500 fill-orange-500" size={12} />
+                      <p className="text-4xl font-black italic tracking-tighter uppercase text-white leading-tight">
                         {winner.name}
                       </p>
-                      <Star className="text-orange-500 fill-orange-500" size={16} />
+                      <Star className="text-orange-500 fill-orange-500" size={12} />
                     </div>
                   ))}
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto mb-10">
-                <div className="bg-neutral-950 border border-neutral-800 px-8 py-6 rounded-3xl text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase font-black mb-1">Total Prize Pool</p>
-                  <p className={`text-4xl font-black font-mono text-emerald-400`}>
+              <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
+                <div className="bg-neutral-950 border border-neutral-800 px-4 py-3 rounded-2xl text-center">
+                  <p className="text-[8px] text-neutral-500 uppercase font-black mb-0.5">Total Prize Pool</p>
+                  <p className={`text-2xl font-black font-mono text-emerald-400`}>
                     ${prizePool.toFixed(0)}
                   </p>
                 </div>
-                <div className="bg-neutral-950 border border-neutral-800 px-8 py-6 rounded-3xl text-center">
-                  <p className="text-[10px] text-neutral-500 uppercase font-black mb-1">Final Score</p>
-                  <p className="text-4xl font-black font-mono text-orange-500">
+                <div className="bg-neutral-950 border border-neutral-800 px-4 py-3 rounded-2xl text-center">
+                  <p className="text-[8px] text-neutral-500 uppercase font-black mb-0.5">Final Score</p>
+                  <p className="text-2xl font-black font-mono text-orange-500">
                     {players.find(p => !p.isEliminated)?.totalPoints || 0}
                   </p>
                 </div>
               </div>
 
-              {players.find(p => !p.isEliminated)?.name.includes("You") ? (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl mb-10 max-w-sm mx-auto">
-                  <p className="text-emerald-500 font-black uppercase text-xs tracking-widest">
-                    {players.filter(p => !p.isEliminated).length > 1 ? "Shared pot added to balance!" : "Winnings added to balance!"}
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl mb-10 max-w-sm mx-auto">
-                   <p className="text-red-500 font-black uppercase text-xs tracking-widest">Better luck next time!</p>
-                </div>
-              )}
-
               <button 
                 onClick={exitToLobby} 
-                className="w-full max-w-md bg-orange-600 hover:bg-orange-500 text-white py-6 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/30 active:scale-95 mx-auto"
+                className="w-full max-w-xs bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/30 active:scale-95 mx-auto text-xs"
               >
                 Return to Lobby
               </button>
             </div>
 
-            <div className="bg-neutral-900 border border-neutral-800 rounded-[40px] overflow-hidden shadow-2xl">
-              <div className="p-8 border-b border-neutral-800">
-                <h3 className="text-2xl font-black uppercase italic tracking-tighter">Final Tournament Standings</h3>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
+              <div className="p-4 border-b border-neutral-800 shrink-0">
+                <h3 className="text-lg font-black uppercase italic tracking-tighter">Standings</h3>
               </div>
-              <div className="grid grid-cols-12 bg-neutral-800/50 p-6 text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                <div className="col-span-1">Rank</div>
+              <div className="grid grid-cols-12 bg-neutral-800/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-500 shrink-0">
+                <div className="col-span-1">#</div>
                 <div className="col-span-5">Player</div>
                 <div className="col-span-3 text-center">Status</div>
-                <div className="col-span-3 text-right">Final Score</div>
+                <div className="col-span-3 text-right">Score</div>
               </div>
-              <div className="divide-y divide-neutral-800/50">
+              <div className="divide-y divide-neutral-800/50 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
-                  <div key={p.id} className={`grid grid-cols-12 p-6 items-center transition-all ${
+                  <div key={p.id} className={`grid grid-cols-12 p-4 items-center transition-all ${
                     p.isEliminated ? 'bg-black/20' : 'bg-orange-600/5'
                   }`}>
                     <div className="col-span-1 flex items-center gap-2">
-                       {!p.isEliminated ? <Medal size={16} className="text-orange-500" /> : <span className="font-mono text-neutral-600">{idx + 1}</span>}
+                       {!p.isEliminated ? <Medal size={12} className="text-orange-500" /> : <span className="font-mono text-[10px] text-neutral-600">{idx + 1}</span>}
                     </div>
-                    <div className="col-span-5 flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-600" : "bg-neutral-800"}`}>
-                        <UserIcon size={14} className="text-white" />
+                    <div className="col-span-5 flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-600" : "bg-neutral-800"}`}>
+                        <UserIcon size={12} className="text-white" />
                       </div>
-                      <span className={`font-black uppercase tracking-tight text-base ${p.name.includes("You") ? "text-orange-500" : "text-white"}`}>
+                      <span className={`font-black uppercase tracking-tight text-xs ${p.name.includes("You") ? "text-orange-500" : "text-white"}`}>
                         {p.name}
                       </span>
                     </div>
                     <div className="col-span-3 text-center">
                       {!p.isEliminated ? (
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-emerald-500/30">Champion</span>
+                        <span className="text-[8px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full font-black uppercase tracking-widest border border-emerald-500/30">Champ</span>
                       ) : (
-                        <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Out Round {p.eliminatedAt}</span>
+                        <span className="text-[8px] text-neutral-600 font-bold uppercase tracking-widest">Out R{p.eliminatedAt}</span>
                       )}
                     </div>
-                    <div className="col-span-3 text-right font-black text-xl font-mono text-white">
+                    <div className="col-span-3 text-right font-black text-lg font-mono text-white">
                       {p.totalPoints}
                     </div>
                   </div>
@@ -615,6 +606,22 @@ const App = () => {
           </div>
         )}
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #262626;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #404040;
+        }
+      `}} />
     </div>
   );
 };
