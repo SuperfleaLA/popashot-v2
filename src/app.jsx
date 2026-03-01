@@ -244,7 +244,7 @@ const App = () => {
                 <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center text-white rotate-3">
                   <Dribbble size={18} />
                 </div>
-                <h1 className="text-xl font-black italic uppercase tracking-tighter">Elimination Golf</h1>
+                <h1 className="text-xl font-black italic uppercase tracking-tighter">Hoops Eliminator</h1>
               </div>
               <div className="flex items-center gap-2 pr-2">
                 <Wallet size={14} className="text-emerald-500" />
