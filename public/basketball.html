@@ -16,6 +16,8 @@
         }
         #crosshair.active { border-color: #fb923c; border-style: solid; border-width: 3px; }
         .digital-font { font-family: 'Courier New', Courier, monospace; }
+        .buzzer-active { color: #f87171; animation: blink 0.5s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
@@ -71,6 +73,7 @@
 
         let timeLeft = 30;
         let isGameActive = false;
+        let isBuzzerPending = false; // NEW: Track if we are waiting for balls to land after 0:00
         let gameTimerInterval = null;
 
         // PHYSICS CONSTANTS
@@ -95,6 +98,7 @@
         const RIM_THICKNESS = 0.045;
         const RIM_COLOR = 0xff4500; 
         const RIM_BOUNCE_MULT = 0.48; 
+        const FLOOR_BOUNCE_MULT = 0.4;
         
         let mouse = new THREE.Vector2();
         let raycaster = new THREE.Raycaster();
@@ -120,15 +124,10 @@
             return RAMP_BASE_Y + ((z - RACK_FRONT_LIMIT) * RAMP_SLOPE) + BALL_RADIUS;
         }
 
-        // ============================================================
-        // SCORE SUBMISSION — sends score back to the React app
-        // ============================================================
         function submitScoreAndReturn() {
-            // Send score to parent window (the React iframe)
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage({ type: 'GAME_COMPLETE', score: score }, '*');
             } else {
-                // Fallback: if opened directly (not in iframe), use URL params
                 window.location.href = `/?score=${score}`;
             }
         }
@@ -158,21 +157,38 @@
 
         function beginGame() {
             isGameActive = true;
+            isBuzzerPending = false;
             timeLeft = 30;
-            document.getElementById('timer').innerText = timeLeft;
+            const timerEl = document.getElementById('timer');
+            timerEl.innerText = timeLeft;
+            timerEl.classList.remove('buzzer-active');
             
             gameTimerInterval = setInterval(() => {
                 timeLeft--;
-                document.getElementById('timer').innerText = timeLeft;
+                document.getElementById('timer').innerText = Math.max(0, timeLeft);
                 if (timeLeft <= 0) {
-                    endGame();
+                    clearInterval(gameTimerInterval);
+                    checkGameEndConditions();
                 }
             }, 1000);
         }
 
-        function endGame() {
+        function checkGameEndConditions() {
+            // Stop allowing new shots
             isGameActive = false;
-            clearInterval(gameTimerInterval);
+            
+            // If there are balls in the air, wait for them to finish
+            if (activeShots.length > 0) {
+                isBuzzerPending = true;
+                document.getElementById('timer').classList.add('buzzer-active');
+                document.getElementById('timer').innerText = "0";
+            } else {
+                showGameOver();
+            }
+        }
+
+        function showGameOver() {
+            isBuzzerPending = false;
             document.getElementById('game-over-modal').classList.remove('hidden');
             document.getElementById('final-score-text').innerText = score;
         }
@@ -182,12 +198,13 @@
             document.getElementById('score').innerText = score;
             document.getElementById('game-over-modal').classList.add('hidden');
             
+            // Cleanup any existing active shots to rack
             activeShots.forEach(shot => {
                 const b = shot.ball;
                 b.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
                 b.userData.velocity.set(0,0,0);
                 b.userData.hasScored = false;
-                balls.push(b);
+                if (!balls.includes(b)) balls.push(b);
             });
             activeShots = [];
             
@@ -209,19 +226,19 @@
             renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
             document.body.appendChild(renderer.domElement);
 
-            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.4);
             scene.add(hemiLight);
 
-            const topLight = new THREE.DirectionalLight(0xffffff, 1.0);
-            topLight.position.set(0, 15, 5);
+            const topLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            topLight.position.set(2, 15, 5);
             topLight.castShadow = true;
             topLight.shadow.mapSize.width = 2048;
             topLight.shadow.mapSize.height = 2048;
             scene.add(topLight);
 
-            const rimLight = new THREE.PointLight(0xff8844, 1.2, 10);
-            rimLight.position.set(0, 5, -1.5);
-            scene.add(rimLight);
+            const frontFill = new THREE.DirectionalLight(0xffccaa, 0.4);
+            frontFill.position.set(0, 5, 10);
+            scene.add(frontFill);
 
             createArcadeCabinet();
             createHoop();
@@ -287,7 +304,11 @@
 
         function createArcadeCabinet() {
             const cabinetGroup = new THREE.Group();
-            const metalMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.3, roughness: 0.5 });
+            const metalMat = new THREE.MeshStandardMaterial({ 
+                color: 0x666666, 
+                metalness: 0.2, 
+                roughness: 0.85 
+            });
             const woodTex = createHardwoodTexture();
             const rampMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.6, metalness: 0.1 });
             
@@ -587,38 +608,87 @@
                 if (netWiggleTime > 2.0) isNetWiggling = false;
             }
             if (heldBall && isPullingBack) updateTrajectoryGuide(heldBall.position, calculateVelocityFromPull(heldBall.position, getMouseIn3DSpace(heldBall.position.z)).multiplyScalar(GLOBAL_SPEED_MULTIPLIER));
+            
+            // PHYSICS LOOP FOR ACTIVE SHOTS
             for (let i = activeShots.length - 1; i >= 0; i--) {
                 const shot = activeShots[i], ball = shot.ball, vel = shot.velocity;
                 const floorY = getFloorY(ball.position.z);
+                
                 if (vel.y <= 0 && ball.position.y <= floorY && ball.position.z < RACK_FRONT_LIMIT) {
-                    ball.position.y = floorY; ball.userData.velocity.set(vel.x, 0, Math.max(0.04, vel.z));
-                    ball.userData.spin = 0; balls.push(ball); activeShots.splice(i, 1);
+                    if (Math.abs(vel.y) > 0.01) {
+                        ball.position.y = floorY + 0.01;
+                        vel.y *= -FLOOR_BOUNCE_MULT;
+                        vel.z = Math.max(0.04, vel.z + (Math.abs(vel.y) * 0.2));
+                        vel.x += (Math.random() - 0.5) * 0.025; 
+                    } else {
+                        ball.position.y = floorY; 
+                        ball.userData.velocity.set(vel.x, 0, Math.max(0.04, vel.z));
+                        ball.userData.spin = 0; 
+                        balls.push(ball); 
+                        activeShots.splice(i, 1);
+                        
+                        // NEW: If we were waiting for the buzzer beater and this was the last shot
+                        if (isBuzzerPending && activeShots.length === 0) {
+                            showGameOver();
+                        }
+                    }
                 } else {
                     if (ball.userData.inNet) vel.multiplyScalar(NET_FRICTION);
-                    ball.position.add(vel); vel.y += (ball.userData.inNet ? GRAVITY * 0.4 : GRAVITY) * GLOBAL_SPEED_MULTIPLIER;
+                    ball.position.add(vel); 
+                    vel.y += (ball.userData.inNet ? GRAVITY * 0.4 : GRAVITY) * GLOBAL_SPEED_MULTIPLIER;
                     if (!ball.userData.inNet) { ball.rotation.x += ball.userData.spin; ball.userData.spin *= 0.995; }
                     handleCollisions(shot);
                     if (ball.position.y < -1) {
                         ball.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
                         ball.userData.velocity.set(0,0,0); ball.userData.hasScored = false;
                         balls.push(ball); activeShots.splice(i, 1);
+                        
+                        // NEW: Check buzzer beater end on fall-through-floor fails too
+                        if (isBuzzerPending && activeShots.length === 0) {
+                            showGameOver();
+                        }
                     }
                 }
             }
+
+            // PASSIVE ROLLING BALLS
             balls.forEach((ball, idx) => {
                 if (ball === heldBall) return;
                 const vel = ball.userData.velocity, lastPos = ball.position.clone();
-                if (ball.position.z < RACK_FRONT_LIMIT) {
-                    ball.position.y = getFloorY(ball.position.z); vel.z = (vel.z + 0.001) * 0.97; vel.x *= 0.90;
-                } else {
-                    ball.position.z = RACK_FRONT_LIMIT; ball.position.y = getFloorY(RACK_FRONT_LIMIT); vel.z *= 0.1; vel.x *= 0.8;
+                const floorY = getFloorY(ball.position.z);
+
+                if (ball.position.y > floorY) {
+                    vel.y += GRAVITY * GLOBAL_SPEED_MULTIPLIER;
+                } else if (ball.position.y < floorY) {
+                    if (Math.abs(vel.y) > 0.005) {
+                        vel.y *= -FLOOR_BOUNCE_MULT;
+                        ball.position.y = floorY + 0.01;
+                    } else {
+                        vel.y = 0;
+                        ball.position.y = floorY;
+                    }
                 }
+
+                if (ball.position.z < RACK_FRONT_LIMIT) {
+                    vel.z = (vel.z + 0.001) * 0.97; vel.x *= 0.96;
+                } else {
+                    ball.position.z = RACK_FRONT_LIMIT; vel.z *= 0.1; vel.x *= 0.8;
+                }
+                
                 ball.position.add(vel);
-                if (ball.position.x < WALL_LEFT + 0.15) { ball.position.x = WALL_LEFT + 0.15; vel.x *= -0.5; }
-                if (ball.position.x > WALL_RIGHT - 0.15) { ball.position.x = WALL_RIGHT - 0.15; vel.x *= -0.5; }
+                
+                const ROLLING_WALL_DAMP = 0.5;
+                if (ball.position.x < WALL_LEFT + 0.15) { ball.position.x = WALL_LEFT + 0.15; vel.x *= -ROLLING_WALL_DAMP; }
+                if (ball.position.x > WALL_RIGHT - 0.15) { ball.position.x = WALL_RIGHT - 0.15; vel.x *= -ROLLING_WALL_DAMP; }
+
                 handleBallBallCollisions(ball, idx, balls);
                 if (ball.position.z > RACK_FRONT_LIMIT) ball.position.z = RACK_FRONT_LIMIT;
-                ball.position.y = getFloorY(ball.position.z);
+                
+                const currentFloorY = getFloorY(ball.position.z);
+                if (ball.position.y < currentFloorY && Math.abs(vel.y) < 0.001) {
+                    ball.position.y = currentFloorY;
+                }
+
                 const deltaPos = new THREE.Vector3().subVectors(ball.position, lastPos);
                 if (deltaPos.length() > 0) { ball.rotation.z -= deltaPos.x / BALL_RADIUS; ball.rotation.x += deltaPos.z / BALL_RADIUS; }
             });
@@ -626,7 +696,8 @@
         }
 
         function handleScored() {
-            if (!isGameActive) return;
+            // Note: scoring is allowed even if isGameActive is false, 
+            // provided the ball was already in flight (activeShots)
             score += 2; 
             document.getElementById('score').innerText = score;
         }
