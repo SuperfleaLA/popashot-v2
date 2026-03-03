@@ -230,23 +230,20 @@ const App = () => {
   };
 
   return (
-    <div className="h-screen bg-neutral-100 text-neutral-900 overflow-hidden font-sans relative flex flex-col items-center justify-center">
+    <div className="h-screen bg-[#f8f9fa] text-neutral-900 overflow-hidden font-sans relative flex flex-col items-center justify-center">
       
       {/* BACKGROUND TEXTURE LAYERS */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         {/* Fine Noise Texture */}
         <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
         
-        {/* Soft Radial Gradient for focus */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(0,0,0,0.05)_100%)]"></div>
+        {/* Architectural Geometry: Large-scale court suggests */}
+        <div className="absolute top-1/2 -left-20 -translate-y-1/2 w-[600px] h-[600px] border border-neutral-900/[0.03] rounded-full"></div>
+        <div className="absolute top-1/2 -right-20 -translate-y-1/2 w-[600px] h-[600px] border border-neutral-900/[0.03] rounded-full"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border border-neutral-900/[0.03] rounded-full"></div>
         
-        {/* Abstract Basketball Court Elements (Large scale lines) */}
-        <div className="absolute -top-32 -left-32 w-[600px] h-[600px] border-[1px] border-orange-500/10 rounded-full"></div>
-        <div className="absolute -bottom-64 -right-32 w-[800px] h-[800px] border-[1px] border-orange-500/5 rounded-full"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] border-[1px] border-neutral-900/5 rounded-full"></div>
-        
-        {/* Subtle decorative "key" line */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[400px] h-[200px] border-t border-x border-neutral-900/5"></div>
+        {/* Radial Depth */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_20%,_rgba(0,0,0,0.02)_100%)]"></div>
       </div>
 
       <div className="w-full max-w-4xl h-full flex flex-col justify-center p-4 md:p-6 relative z-10">
@@ -254,7 +251,7 @@ const App = () => {
         {/* SELECTION UI */}
         {gameState === 'selection' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col h-full max-h-[800px]">
-            <div className="flex justify-between items-center bg-white/80 backdrop-blur-md border border-white p-3 rounded-2xl mb-6 shadow-sm">
+            <div className="flex justify-between items-center bg-white/80 backdrop-blur-xl border border-white/50 p-3 rounded-2xl mb-6 shadow-xl shadow-neutral-200/20">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white rotate-3 shadow-orange-200 shadow-lg">
                   <Dribbble size={18} />
@@ -278,7 +275,7 @@ const App = () => {
                   key={amount}
                   disabled={balance < amount}
                   onClick={() => handleSelectContest(amount)}
-                  className={`group relative bg-white/90 backdrop-blur-sm border border-neutral-200 hover:border-orange-400 p-4 rounded-2xl flex justify-between items-center transition-all active:scale-95 shadow-sm hover:shadow-md ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                  className={`group relative bg-white/95 backdrop-blur-sm border border-neutral-200 hover:border-orange-400 p-4 rounded-2xl flex justify-between items-center transition-all active:scale-95 shadow-sm hover:shadow-md ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-neutral-100/50 rounded-xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
@@ -309,7 +306,7 @@ const App = () => {
           <div className="flex flex-col items-center justify-center h-full animate-in zoom-in duration-300">
             <div className="relative w-40 h-40 mb-8">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-white/50" />
+                <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-neutral-200" />
                 <circle 
                   cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" 
                   strokeDasharray={440} strokeDashoffset={440 - (440 * waitingPlayers) / 10}
@@ -328,7 +325,7 @@ const App = () => {
         {/* STANDING ROOM */}
         {gameState === 'standing' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col">
-            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
+            <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
               <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
                 <Zap size={160} className="text-orange-500" />
               </div>
@@ -425,7 +422,7 @@ const App = () => {
         {/* POST-ROUND SUMMARY */}
         {gameState === 'post_round' && (
           <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white/90 backdrop-blur-md p-6 rounded-[32px] border border-white gap-6 shrink-0 shadow-sm">
+            <div className="flex flex-col md:flex-row justify-between items-center bg-white/95 backdrop-blur-xl p-6 rounded-[32px] border border-white/50 gap-6 shrink-0 shadow-sm">
               <div>
                 <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-neutral-800">Round {currentRound} Summary</h2>
                 {isUserEliminated && userObject?.eliminatedAt === currentRound ? (
@@ -463,7 +460,7 @@ const App = () => {
               </div>
             </div>
 
-            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
+            <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
               <div className="grid grid-cols-12 bg-neutral-50/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0 border-b border-neutral-100">
                 <div className="col-span-1">Rank</div>
                 <div className="col-span-6">Player</div>
@@ -500,7 +497,7 @@ const App = () => {
         {/* FINISHED SCREEN */}
         {gameState === 'finished' && (
           <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
-            <div className="bg-white border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
+            <div className="bg-white/95 border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-30" />
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-100/50 rounded-full blur-3xl"></div>
               
@@ -546,7 +543,7 @@ const App = () => {
               </button>
             </div>
 
-            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
+            <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
               <div className="p-4 border-b border-neutral-100 shrink-0">
                 <h3 className="text-lg font-black uppercase italic tracking-tighter text-neutral-800">Standings</h3>
               </div>
