@@ -230,13 +230,31 @@ const App = () => {
   };
 
   return (
-    <div className="h-screen bg-neutral-50 text-neutral-900 overflow-hidden p-4 md:p-6 font-sans flex flex-col items-center justify-center">
-      <div className="w-full max-w-4xl h-full flex flex-col justify-center">
+    <div className="h-screen bg-neutral-100 text-neutral-900 overflow-hidden font-sans relative flex flex-col items-center justify-center">
+      
+      {/* BACKGROUND TEXTURE LAYERS */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        {/* Fine Noise Texture */}
+        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
         
-        {/* SELECTION UI - LIGHT VERSION */}
+        {/* Soft Radial Gradient for focus */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(0,0,0,0.05)_100%)]"></div>
+        
+        {/* Abstract Basketball Court Elements (Large scale lines) */}
+        <div className="absolute -top-32 -left-32 w-[600px] h-[600px] border-[1px] border-orange-500/10 rounded-full"></div>
+        <div className="absolute -bottom-64 -right-32 w-[800px] h-[800px] border-[1px] border-orange-500/5 rounded-full"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] border-[1px] border-neutral-900/5 rounded-full"></div>
+        
+        {/* Subtle decorative "key" line */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[400px] h-[200px] border-t border-x border-neutral-900/5"></div>
+      </div>
+
+      <div className="w-full max-w-4xl h-full flex flex-col justify-center p-4 md:p-6 relative z-10">
+        
+        {/* SELECTION UI */}
         {gameState === 'selection' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col h-full max-h-[800px]">
-            <div className="flex justify-between items-center bg-white border border-neutral-200 p-3 rounded-2xl mb-6 shadow-sm">
+            <div className="flex justify-between items-center bg-white/80 backdrop-blur-md border border-white p-3 rounded-2xl mb-6 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white rotate-3 shadow-orange-200 shadow-lg">
                   <Dribbble size={18} />
@@ -260,10 +278,10 @@ const App = () => {
                   key={amount}
                   disabled={balance < amount}
                   onClick={() => handleSelectContest(amount)}
-                  className={`group bg-white border border-neutral-200 hover:border-orange-400 p-4 rounded-2xl flex justify-between items-center transition-all active:scale-95 shadow-sm hover:shadow-md ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
+                  className={`group relative bg-white/90 backdrop-blur-sm border border-neutral-200 hover:border-orange-400 p-4 rounded-2xl flex justify-between items-center transition-all active:scale-95 shadow-sm hover:shadow-md ${balance < amount ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-neutral-100 rounded-xl flex items-center justify-center text-emerald-600">
+                    <div className="w-10 h-10 bg-neutral-100/50 rounded-xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
                       <DollarSign size={20} />
                     </div>
                     <div className="text-left">
@@ -276,7 +294,7 @@ const App = () => {
               ))}
             </div>
 
-            <div className="mt-auto pt-4 border-t border-neutral-200 text-center">
+            <div className="mt-auto pt-4 border-t border-neutral-200/50 text-center">
                <div className="flex items-center justify-center gap-4 text-neutral-400 text-[10px] font-black uppercase tracking-widest">
                   <div className="flex items-center gap-1"><Users size={12}/> 10 Players</div>
                   <div className="flex items-center gap-1"><TrendingDown size={12}/> 4 Rounds</div>
@@ -291,7 +309,7 @@ const App = () => {
           <div className="flex flex-col items-center justify-center h-full animate-in zoom-in duration-300">
             <div className="relative w-40 h-40 mb-8">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-neutral-200" />
+                <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-white/50" />
                 <circle 
                   cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" 
                   strokeDasharray={440} strokeDashoffset={440 - (440 * waitingPlayers) / 10}
@@ -307,10 +325,10 @@ const App = () => {
           </div>
         )}
 
-        {/* STANDING ROOM - LIGHT VERSION */}
+        {/* STANDING ROOM */}
         {gameState === 'standing' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col">
-            <div className="bg-white border border-neutral-200 rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-xl flex flex-col flex-grow">
+            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
               <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
                 <Zap size={160} className="text-orange-500" />
               </div>
@@ -357,12 +375,12 @@ const App = () => {
                 </div>
               </div>
 
-              <div className="mt-auto grid grid-cols-2 md:grid-cols-5 gap-3 overflow-y-auto custom-scrollbar pr-1">
+              <div className="mt-auto grid grid-cols-2 md:grid-cols-5 gap-3 overflow-y-auto custom-scrollbar pr-1 relative z-10">
                 {players.filter(p => !p.isEliminated).map((p, i) => {
                    const isReady = i < readyCount;
                    return (
                     <div key={p.id} className={`p-3 rounded-xl border transition-all ${
-                      isReady ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-neutral-50 border-neutral-200'
+                      isReady ? 'bg-emerald-50/80 border-emerald-200 shadow-sm' : 'bg-white/50 border-neutral-100'
                     }`}>
                       <div className="flex items-center justify-between mb-1.5">
                         <UserIcon size={12} className={isReady ? 'text-emerald-500' : 'text-neutral-300'} />
@@ -379,9 +397,9 @@ const App = () => {
           </div>
         )}
 
-        {/* GAME FRAME — LIGHT THEMED WRAPPER */}
+        {/* GAME FRAME */}
         {gameState === 'playing_game' && (
-          <div className="animate-in zoom-in duration-300 h-full flex flex-col">
+          <div className="animate-in zoom-in duration-300 h-full flex flex-col relative z-20">
             <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -404,10 +422,10 @@ const App = () => {
           </div>
         )}
 
-        {/* POST-ROUND SUMMARY - LIGHT VERSION */}
+        {/* POST-ROUND SUMMARY */}
         {gameState === 'post_round' && (
           <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[32px] border border-neutral-200 gap-6 shrink-0 shadow-sm">
+            <div className="flex flex-col md:flex-row justify-between items-center bg-white/90 backdrop-blur-md p-6 rounded-[32px] border border-white gap-6 shrink-0 shadow-sm">
               <div>
                 <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-neutral-800">Round {currentRound} Summary</h2>
                 {isUserEliminated && userObject?.eliminatedAt === currentRound ? (
@@ -445,8 +463,8 @@ const App = () => {
               </div>
             </div>
 
-            <div className="bg-white border border-neutral-200 rounded-[32px] overflow-hidden shadow-xl flex-grow flex flex-col min-h-0">
-              <div className="grid grid-cols-12 bg-neutral-50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0 border-b border-neutral-100">
+            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
+              <div className="grid grid-cols-12 bg-neutral-50/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0 border-b border-neutral-100">
                 <div className="col-span-1">Rank</div>
                 <div className="col-span-6">Player</div>
                 <div className="col-span-2 text-center">Score</div>
@@ -455,17 +473,16 @@ const App = () => {
               <div className="divide-y divide-neutral-100 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
                   <div key={p.id} className={`grid grid-cols-12 p-4 items-center transition-all ${
-                    p.isEliminated ? 'opacity-30 grayscale bg-neutral-50' : 'hover:bg-orange-50/30'
+                    p.isEliminated ? 'opacity-30 grayscale bg-neutral-50/50' : 'hover:bg-orange-50/30'
                   }`}>
                     <div className="col-span-1 font-mono text-[10px] text-neutral-400">{idx + 1}</div>
                     <div className="col-span-6 flex items-center gap-2">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-500" : "bg-neutral-100"}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-500 shadow-md shadow-orange-100" : "bg-neutral-100"}`}>
                         <UserIcon size={14} className={p.name.includes("You") ? "text-white" : "text-neutral-400"} />
                       </div>
                       <span className={`font-black uppercase tracking-tight text-sm ${p.name.includes("You") ? (p.isEliminated ? "text-red-500" : "text-orange-600") : "text-neutral-700"}`}>
                         {p.name}
                       </span>
-                      {p.isEliminated && p.eliminatedAt === currentRound && <span className="text-[7px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-black uppercase ml-1">Cut</span>}
                     </div>
                     <div className="col-span-2 text-center font-bold text-neutral-800 text-base">
                       {p.points[currentRound - 1] ?? 0}
@@ -480,13 +497,14 @@ const App = () => {
           </div>
         )}
 
-        {/* FINISHED SCREEN - LIGHT VERSION */}
+        {/* FINISHED SCREEN */}
         {gameState === 'finished' && (
           <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
-            <div className="bg-white border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-xl overflow-hidden relative shrink-0">
+            <div className="bg-white border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-30" />
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-100/50 rounded-full blur-3xl"></div>
               
-              <Trophy size={60} className="mx-auto text-orange-500 mb-4 drop-shadow-[0_4px_12px_rgba(249,115,22,0.2)]" />
+              <Trophy size={60} className="mx-auto text-orange-500 mb-4 drop-shadow-[0_4px_12px_rgba(249,115,22,0.3)] animate-bounce" />
               
               <div className="mb-4">
                 <h1 className="text-[10px] text-neutral-400 font-black uppercase tracking-widest mb-1">
@@ -506,13 +524,13 @@ const App = () => {
               </div>
               
               <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
-                <div className="bg-neutral-50 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
+                <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
                   <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Total Prize Pool</p>
                   <p className={`text-2xl font-black font-mono text-emerald-600`}>
                     ${prizePool.toFixed(0)}
                   </p>
                 </div>
-                <div className="bg-neutral-50 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
+                <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
                   <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Final Score</p>
                   <p className="text-2xl font-black font-mono text-orange-500">
                     {players.find(p => !p.isEliminated)?.totalPoints || 0}
@@ -522,23 +540,23 @@ const App = () => {
 
               <button 
                 onClick={exitToLobby} 
-                className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs"
+                className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs relative z-10"
               >
                 Return to Lobby
               </button>
             </div>
 
-            <div className="bg-white border border-neutral-200 rounded-[32px] overflow-hidden shadow-xl flex-grow flex flex-col min-h-0">
+            <div className="bg-white/90 backdrop-blur-md border border-white rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
               <div className="p-4 border-b border-neutral-100 shrink-0">
                 <h3 className="text-lg font-black uppercase italic tracking-tighter text-neutral-800">Standings</h3>
               </div>
-              <div className="grid grid-cols-12 bg-neutral-50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0">
+              <div className="grid grid-cols-12 bg-neutral-50/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0">
                 <div className="col-span-1">#</div>
                 <div className="col-span-5">Player</div>
                 <div className="col-span-3 text-center">Status</div>
                 <div className="col-span-3 text-right">Score</div>
               </div>
-              <div className="divide-y divide-neutral-50 overflow-y-auto flex-grow custom-scrollbar">
+              <div className="divide-y divide-neutral-100 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
                   <div key={p.id} className={`grid grid-cols-12 p-4 items-center transition-all ${
                     p.isEliminated ? 'bg-neutral-50/50' : 'bg-orange-50/20'
@@ -547,7 +565,7 @@ const App = () => {
                        {!p.isEliminated ? <Medal size={12} className="text-orange-500" /> : <span className="font-mono text-[10px] text-neutral-300">{idx + 1}</span>}
                     </div>
                     <div className="col-span-5 flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-500" : "bg-neutral-200"}`}>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-500 shadow-sm shadow-orange-100" : "bg-neutral-200"}`}>
                         <UserIcon size={12} className={p.name.includes("You") ? "text-white" : "text-neutral-400"} />
                       </div>
                       <span className={`font-black uppercase tracking-tight text-xs ${p.name.includes("You") ? "text-orange-600" : "text-neutral-700"}`}>
@@ -571,18 +589,20 @@ const App = () => {
           </div>
         )}
 
+        {/* MODAL OVERLAY */}
         {showConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-white/60 animate-in fade-in duration-200">
-            <div className="bg-white border border-neutral-200 w-full max-w-sm rounded-[32px] p-8 shadow-2xl">
-              <div className="flex justify-center mb-4">
-                <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center text-orange-500 border border-orange-100">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-white/40 animate-in fade-in duration-200">
+            <div className="bg-white border border-neutral-200 w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
+               <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-500/5 rounded-full blur-2xl"></div>
+              <div className="flex justify-center mb-4 relative z-10">
+                <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center text-orange-500 border border-orange-100 shadow-sm shadow-orange-50">
                    <DollarSign size={32} />
                 </div>
               </div>
-              <h3 className="text-3xl font-black uppercase italic mb-2 text-center leading-tight text-neutral-800">Join for ${selectedBuyIn}?</h3>
-              <p className="text-center text-neutral-400 text-xs font-bold uppercase tracking-widest mb-8">Current Balance: ${balance.toFixed(2)}</p>
+              <h3 className="text-3xl font-black uppercase italic mb-2 text-center leading-tight text-neutral-800 relative z-10">Join for ${selectedBuyIn}?</h3>
+              <p className="text-center text-neutral-400 text-xs font-bold uppercase tracking-widest mb-8 relative z-10">Current Balance: ${balance.toFixed(2)}</p>
               
-              <div className="space-y-3">
+              <div className="space-y-3 relative z-10">
                 <button 
                   onClick={confirmJoin} 
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-100 active:scale-95 transition-all"
@@ -609,11 +629,11 @@ const App = () => {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #e5e5e5;
+          background: rgba(0,0,0,0.05);
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #d4d4d4;
+          background: rgba(0,0,0,0.1);
         }
       `}} />
     </div>
