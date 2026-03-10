@@ -127,6 +127,7 @@ const App = () => {
       name: i === 0 ? "You (User)" : `Baller ${i + 1}`,
       points: [], 
       totalPoints: 0,
+      currentRoundScore: 0, 
       isEliminated: false,
       eliminatedAt: null
     }));
@@ -161,11 +162,12 @@ const App = () => {
           ? userScore 
           : Math.floor(Math.random() * 15) + 5; 
 
-        const newPoints = [...p.points, roundPoints];
+        const newPointsHistory = [...p.points, roundPoints];
         return {
           ...p,
-          points: newPoints,
-          totalPoints: newPoints.reduce((a, b) => a + b, 0)
+          points: newPointsHistory,
+          currentRoundScore: roundPoints,
+          totalPoints: newPointsHistory.reduce((a, b) => a + b, 0)
         };
       });
 
@@ -183,22 +185,40 @@ const App = () => {
     const survivalTargets = { 1: 6, 2: 4, 3: 2, 4: 1 };
     const targetCount = survivalTargets[currentRound];
     
-    const sortedActive = [...activePlayersBeforeCut].sort((a, b) => b.totalPoints - a.totalPoints);
+    // Core sorting by CURRENT ROUND score only
+    const sortedActive = [...activePlayersBeforeCut].sort((a, b) => {
+      if (b.currentRoundScore !== a.currentRoundScore) {
+        return b.currentRoundScore - a.currentRoundScore;
+      }
+      // Tie-breaker: Total points accumulated throughout tournament
+      return b.totalPoints - a.totalPoints;
+    });
+
     const thresholdPlayer = sortedActive[targetCount - 1];
-    const thresholdScore = thresholdPlayer ? thresholdPlayer.totalPoints : 0;
+    const thresholdScore = thresholdPlayer ? thresholdPlayer.currentRoundScore : 0;
+    const thresholdTotal = thresholdPlayer ? thresholdPlayer.totalPoints : 0;
 
     const finalPlayers = playersAtEndOfRound.map((p) => {
       if (p.isEliminated) return p;
-      const survives = p.totalPoints >= thresholdScore;
+      
+      // Survivability check
+      const survives = p.currentRoundScore > thresholdScore || 
+                       (p.currentRoundScore === thresholdScore && p.totalPoints >= thresholdTotal);
+
       if (!survives) {
         return { ...p, isEliminated: true, eliminatedAt: currentRound };
       }
       return p;
     });
 
+    // Rank for display (Survivors on top, then eliminated)
     const rankedList = [...finalPlayers].sort((a, b) => {
       if (a.isEliminated && !b.isEliminated) return 1;
       if (!a.isEliminated && b.isEliminated) return -1;
+      
+      if (b.currentRoundScore !== a.currentRoundScore) {
+        return b.currentRoundScore - a.currentRoundScore;
+      }
       return b.totalPoints - a.totalPoints;
     });
 
@@ -206,9 +226,8 @@ const App = () => {
     const survivors = rankedList.filter(p => !p.isEliminated);
     
     if (currentRound === 4 || survivors.length <= 1) {
-      const winners = survivors;
-      if (winners.some(w => w.name.includes("You"))) {
-        const share = prizePool / winners.length;
+      if (survivors.some(w => w.name.includes("You"))) {
+        const share = prizePool / survivors.length;
         setBalance(prev => prev + share);
       }
       setGameState('finished');
@@ -219,6 +238,8 @@ const App = () => {
 
   const proceedToNextRound = () => {
     setCurrentRound(prev => prev + 1);
+    // Reset round scores for all players remaining
+    setPlayers(prev => prev.map(p => ({ ...p, currentRoundScore: 0 })));
     setReadyCount(0); 
     setUserReady(false);
     setGameState('standing');
@@ -234,16 +255,22 @@ const App = () => {
       
       {/* BACKGROUND TEXTURE LAYERS */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        {/* Fine Noise Texture */}
-        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+        <div className="absolute inset-0 opacity-[0.04] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
         
-        {/* Architectural Geometry: Large-scale court suggests */}
-        <div className="absolute top-1/2 -left-20 -translate-y-1/2 w-[600px] h-[600px] border border-neutral-900/[0.03] rounded-full"></div>
-        <div className="absolute top-1/2 -right-20 -translate-y-1/2 w-[600px] h-[600px] border border-neutral-900/[0.03] rounded-full"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] border border-neutral-900/[0.03] rounded-full"></div>
-        
-        {/* Radial Depth */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_20%,_rgba(0,0,0,0.02)_100%)]"></div>
+        {/* Court Outlines */}
+        <div className="absolute top-1/2 -left-[10%] -translate-y-1/2 w-[45vw] h-[45vw] border-[2px] border-orange-500/10 rounded-full"></div>
+        <div className="absolute top-1/2 -right-[10%] -translate-y-1/2 w-[45vw] h-[45vw] border-[2px] border-orange-500/10 rounded-full"></div>
+
+        {/* Center Court Line & Circle */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] border-[1px] border-neutral-900/5 rounded-full flex items-center justify-center">
+            <div className="absolute h-[200vh] w-[1px] bg-neutral-900/[0.04]"></div>
+        </div>
+
+        {/* Paint Areas */}
+        <div className="absolute top-1/2 -left-[5%] -translate-y-1/2 w-[20vw] h-[15vw] border-[1px] border-neutral-900/5 rounded-r-xl bg-neutral-900/[0.01]"></div>
+        <div className="absolute top-1/2 -right-[5%] -translate-y-1/2 w-[20vw] h-[15vw] border-[1px] border-neutral-900/5 rounded-l-xl bg-neutral-900/[0.01]"></div>
+
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_30%,_rgba(0,0,0,0.02)_100%)]"></div>
       </div>
 
       <div className="w-full max-w-4xl h-full flex flex-col justify-center p-4 md:p-6 relative z-10">
@@ -266,7 +293,7 @@ const App = () => {
 
             <div className="text-center mb-6 shrink-0">
                <p className="text-neutral-400 font-bold tracking-[0.2em] uppercase text-[10px] mb-2">The High-Stakes Survival Tournament</p>
-               <h2 className="text-4xl font-black italic tracking-tighter uppercase text-neutral-900 leading-none">Select Your Entry</h2>
+               <h2 className="text-4xl font-black italic tracking-tighter uppercase text-neutral-900 leading-none">Choose Your Entry</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 overflow-y-auto px-1 py-1 custom-scrollbar">
@@ -293,9 +320,9 @@ const App = () => {
 
             <div className="mt-auto pt-4 border-t border-neutral-200/50 text-center">
                <div className="flex items-center justify-center gap-4 text-neutral-400 text-[10px] font-black uppercase tracking-widest">
-                  <div className="flex items-center gap-1"><Users size={12}/> 10 Players</div>
-                  <div className="flex items-center gap-1"><TrendingDown size={12}/> 4 Rounds</div>
-                  <div className="flex items-center gap-1"><Trophy size={12}/> 1 Winner</div>
+                  <div className="flex items-center gap-1"><Users size={12}/> 10 Ballers</div>
+                  <div className="flex items-center gap-1"><TrendingDown size={12}/> 4 Cuts</div>
+                  <div className="flex items-center gap-1"><Trophy size={12}/> 1 Champion</div>
                </div>
             </div>
           </div>
@@ -318,7 +345,7 @@ const App = () => {
                 <span className="text-[10px] text-neutral-400 font-black uppercase tracking-tighter">Players</span>
               </div>
             </div>
-            <h2 className="text-3xl font-black uppercase italic tracking-tight text-center text-neutral-800">Joining Lobby...</h2>
+            <h2 className="text-3xl font-black uppercase italic tracking-tight text-center text-neutral-800">Filling Lobby...</h2>
           </div>
         )}
 
@@ -332,18 +359,18 @@ const App = () => {
               <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
                 <div className="text-center md:text-left">
                   <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-orange-200 mb-3 inline-block">
-                    Tournament Round {currentRound}
+                    Round {currentRound} of 4
                   </span>
                   <h2 className="text-5xl font-black italic uppercase leading-none mb-1 tracking-tighter text-neutral-800">
-                    {isUserEliminated ? "Spectating" : "Standing Room"}
+                    {isUserEliminated ? "Spectating" : "Fresh Slate"}
                   </h2>
                   <p className="text-neutral-500 text-sm font-medium">
-                    {isUserEliminated ? "Watching the remaining survivors." : "Wait for others or bypass to start."}
+                    {isUserEliminated ? "Watching the remaining survivors." : "Scores are reset. This round is all that matters."}
                   </p>
                 </div>
                 <div className="flex flex-col items-center gap-3 min-w-[180px]">
                   <div className="text-center">
-                    <p className="text-[9px] text-neutral-400 font-black uppercase tracking-tighter mb-0.5">Round Starts In</p>
+                    <p className="text-[9px] text-neutral-400 font-black uppercase tracking-tighter mb-0.5">Tip Off In</p>
                     <p className="text-4xl font-mono font-black text-orange-500">:{lobbyTimer.toString().padStart(2, '0')}</p>
                   </div>
                   
@@ -356,7 +383,7 @@ const App = () => {
                       }`}
                     >
                       {userReady ? <CheckCircle2 size={20} className="animate-bounce" /> : <Play size={20} />}
-                      {userReady ? 'Starting...' : 'Enter Round'}
+                      {userReady ? 'Locked In' : 'Enter Round'}
                     </button>
                   ) : (
                     <button 
@@ -414,8 +441,8 @@ const App = () => {
         {gameState === 'cut_reveal_delay' && (
           <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center h-full text-center">
             <Loader2 className="animate-spin text-orange-500 mb-6" size={48} />
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800">Calculating Results</h2>
-            <p className="text-neutral-400 font-bold uppercase text-[9px] tracking-widest mt-2">Checking for ties and processing scores...</p>
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800">Calculating Cut Line</h2>
+            <p className="text-neutral-400 font-bold uppercase text-[9px] tracking-widest mt-2">Breaking ties with cumulative scores...</p>
           </div>
         )}
 
@@ -424,21 +451,21 @@ const App = () => {
           <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-center bg-white/95 backdrop-blur-xl p-6 rounded-[32px] border border-white/50 gap-6 shrink-0 shadow-sm">
               <div>
-                <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-neutral-800">Round {currentRound} Summary</h2>
+                <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-neutral-800">Round {currentRound} Results</h2>
                 {isUserEliminated && userObject?.eliminatedAt === currentRound ? (
-                  <p className="text-red-500 font-black uppercase text-[10px] tracking-widest mt-1">You were eliminated this round.</p>
+                  <p className="text-red-500 font-black uppercase text-[10px] tracking-widest mt-1">Below the line. Eliminated.</p>
                 ) : isUserEliminated ? (
                   <p className="text-neutral-400 font-black uppercase text-[10px] tracking-widest mt-1">Watching as a spectator.</p>
                 ) : (
                   <p className="text-emerald-600 font-black uppercase text-[10px] tracking-widest mt-1 flex items-center gap-2">
-                    <CheckCircle2 size={14} /> You survived the cut!
+                    <CheckCircle2 size={14} /> Safe! All scores reset next round.
                   </p>
                 )}
               </div>
               
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Next Round In</p>
+                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Resetting In</p>
                   <p className="font-mono font-bold text-2xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
                 </div>
                 
@@ -463,9 +490,8 @@ const App = () => {
             <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
               <div className="grid grid-cols-12 bg-neutral-50/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0 border-b border-neutral-100">
                 <div className="col-span-1">Rank</div>
-                <div className="col-span-6">Player</div>
-                <div className="col-span-2 text-center">Score</div>
-                <div className="col-span-3 text-right">Total</div>
+                <div className="col-span-8">Baller</div>
+                <div className="col-span-3 text-right">Round Pts</div>
               </div>
               <div className="divide-y divide-neutral-100 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
@@ -473,19 +499,19 @@ const App = () => {
                     p.isEliminated ? 'opacity-30 grayscale bg-neutral-50/50' : 'hover:bg-orange-50/30'
                   }`}>
                     <div className="col-span-1 font-mono text-[10px] text-neutral-400">{idx + 1}</div>
-                    <div className="col-span-6 flex items-center gap-2">
+                    <div className="col-span-8 flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${p.name.includes("You") ? "bg-orange-500 shadow-md shadow-orange-100" : "bg-neutral-100"}`}>
                         <UserIcon size={14} className={p.name.includes("You") ? "text-white" : "text-neutral-400"} />
                       </div>
-                      <span className={`font-black uppercase tracking-tight text-sm ${p.name.includes("You") ? (p.isEliminated ? "text-red-500" : "text-orange-600") : "text-neutral-700"}`}>
-                        {p.name}
-                      </span>
-                    </div>
-                    <div className="col-span-2 text-center font-bold text-neutral-800 text-base">
-                      {p.points[currentRound - 1] ?? 0}
+                      <div className="flex flex-col">
+                        <span className={`font-black uppercase tracking-tight text-sm ${p.name.includes("You") ? (p.isEliminated ? "text-red-500" : "text-orange-600") : "text-neutral-700"}`}>
+                          {p.name}
+                        </span>
+                        {p.isEliminated && p.eliminatedAt === currentRound && <span className="text-[8px] text-red-400 font-black uppercase">Cut this round</span>}
+                      </div>
                     </div>
                     <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">
-                      {p.totalPoints}
+                      {p.currentRoundScore}
                     </div>
                   </div>
                 ))}
@@ -499,13 +525,12 @@ const App = () => {
           <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
             <div className="bg-white/95 border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-30" />
-              <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-100/50 rounded-full blur-3xl"></div>
               
               <Trophy size={60} className="mx-auto text-orange-500 mb-4 drop-shadow-[0_4px_12px_rgba(249,115,22,0.3)] animate-bounce" />
               
               <div className="mb-4">
                 <h1 className="text-[10px] text-neutral-400 font-black uppercase tracking-widest mb-1">
-                  {players.filter(p => !p.isEliminated).length > 1 ? "Joint Champions" : "Tournament Champion"}
+                  Tournament Champion
                 </h1>
                 <div className="flex flex-col items-center justify-center gap-1">
                   {players.filter(p => !p.isEliminated).map(winner => (
@@ -522,15 +547,15 @@ const App = () => {
               
               <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
                 <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
-                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Total Prize Pool</p>
+                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Final Prize</p>
                   <p className={`text-2xl font-black font-mono text-emerald-600`}>
                     ${prizePool.toFixed(0)}
                   </p>
                 </div>
                 <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
-                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Final Score</p>
+                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Winning Round Score</p>
                   <p className="text-2xl font-black font-mono text-orange-500">
-                    {players.find(p => !p.isEliminated)?.totalPoints || 0}
+                    {players.find(p => !p.isEliminated)?.currentRoundScore || 0}
                   </p>
                 </div>
               </div>
@@ -545,13 +570,13 @@ const App = () => {
 
             <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] overflow-hidden shadow-2xl flex-grow flex flex-col min-h-0">
               <div className="p-4 border-b border-neutral-100 shrink-0">
-                <h3 className="text-lg font-black uppercase italic tracking-tighter text-neutral-800">Standings</h3>
+                <h3 className="text-lg font-black uppercase italic tracking-tighter text-neutral-800">Tournament Standings</h3>
               </div>
               <div className="grid grid-cols-12 bg-neutral-50/50 p-4 text-[9px] font-black uppercase tracking-widest text-neutral-400 shrink-0">
                 <div className="col-span-1">#</div>
                 <div className="col-span-5">Player</div>
-                <div className="col-span-3 text-center">Status</div>
-                <div className="col-span-3 text-right">Score</div>
+                <div className="col-span-3 text-center">Outcome</div>
+                <div className="col-span-3 text-right">Cumulative Pts</div>
               </div>
               <div className="divide-y divide-neutral-100 overflow-y-auto flex-grow custom-scrollbar">
                 {players.map((p, idx) => (
