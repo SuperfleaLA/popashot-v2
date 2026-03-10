@@ -59,9 +59,12 @@ const App = () => {
   useEffect(() => {
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'GAME_COMPLETE') {
-        // In practice mode, discard the score
         if (gameState === 'practice') return;
         finishShooting(event.data.score);
+      }
+      if (event.data && event.data.type === 'PRACTICE_COMPLETE') {
+        // User clicked "Go to Game" inside the practice iframe
+        exitPracticeEarly();
       }
     };
     window.addEventListener('message', handleMessage);
@@ -455,7 +458,7 @@ const App = () => {
 
             {/* Basketball iframe */}
             <div className="flex-grow w-full bg-neutral-900 rounded-b-2xl border border-neutral-200 overflow-hidden shadow-2xl min-h-[400px]">
-              <iframe src="/basketball.html" className="w-full h-full border-none" title="Practice Round" />
+              <iframe src="/basketball-practice.html" className="w-full h-full border-none" title="Practice Round" />
             </div>
           </div>
         )}
