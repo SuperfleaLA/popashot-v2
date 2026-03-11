@@ -1,15 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Trophy, 
-  Users, 
-  Dribbble, 
-  ChevronRight, 
-  DollarSign, 
-  TrendingDown, 
+import React, { useState, useEffect } from 'react';
+import {
+  Trophy,
+  Users,
+  Dribbble,
+  ChevronRight,
+  DollarSign,
+  TrendingDown,
   User as UserIcon,
-  Timer,
   CheckCircle2,
-  X,
   Loader2,
   Zap,
   Play,
@@ -18,7 +16,6 @@ import {
   Wallet,
   Star,
   Medal,
-  AlertCircle,
   Dumbbell,
   Clock,
   StopCircle
@@ -29,14 +26,16 @@ const INITIAL_PLAYERS = 10;
 const CONTEST_OPTIONS = [2, 5, 10, 20, 50];
 const ROUND_START_TIMEOUT = 30;
 const POST_ROUND_WAIT = 30;
-const LOBBY_FILL_TIME = 3000; // ms per player joining (300ms * 10 players = 3s total)
-const PRACTICE_WARNING_DURATION = 30; // seconds of warning before practice ends
+const LOBBY_FILL_INTERVAL = 3000; // 1 new player joins every 3 seconds
+const PRACTICE_WARNING_DURATION = 30; // seconds of warning once lobby is full
 
 const App = () => {
   const [balance, setBalance] = useState(1000.00);
   const [gameState, setGameState] = useState('selection');
   const [selectedBuyIn, setSelectedBuyIn] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Starts at 1 (the user) when they confirm, counts up to INITIAL_PLAYERS
   const [waitingPlayers, setWaitingPlayers] = useState(0);
 
   const [currentRound, setCurrentRound] = useState(1);
@@ -46,24 +45,25 @@ const App = () => {
   const [userReady, setUserReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
 
-  // Practice mode state
+  // 'filling'  → lobby still filling, user shoots freely, no timer pressure
+  // 'warning'  → lobby full, 30s countdown shown, then practice ends
+  const [practicePhase, setPracticePhase] = useState('filling');
   const [practiceWarningTimer, setPracticeWarningTimer] = useState(PRACTICE_WARNING_DURATION);
-  const [practicePhase, setPracticePhase] = useState('playing'); // 'playing' | 'warning'
   const [showPracticeOver, setShowPracticeOver] = useState(false);
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
   const prizePool = INITIAL_PLAYERS * (selectedBuyIn || 0) * (1 - HOUSE_RAKE);
 
-  // Listen for messages from basketball iframe
+  // ── Message listener ────────────────────────────────────────────────────
   useEffect(() => {
     const handleMessage = (event) => {
-      if (event.data && event.data.type === 'GAME_COMPLETE') {
-        if (gameState === 'practice') return;
+      if (!event.data) return;
+      if (event.data.type === 'GAME_COMPLETE') {
+        if (gameState === 'practice') return; // discard practice scores
         finishShooting(event.data.score);
       }
-      if (event.data && event.data.type === 'PRACTICE_COMPLETE') {
-        // User clicked "Go to Game" inside the practice iframe
+      if (event.data.type === 'PRACTICE_COMPLETE') {
         exitPracticeEarly();
       }
     };
@@ -71,91 +71,78 @@ const App = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [players, currentRound, gameState]);
 
-  // Waiting room: fill lobby, then kick off practice mode
+  // ── Lobby fill: +1 player every 3s while in practice/filling ───────────
   useEffect(() => {
-    let interval;
-    if (gameState === 'waiting') {
-      interval = setInterval(() => {
-        setWaitingPlayers(prev => {
-          const next = prev + 1;
-          if (next >= INITIAL_PLAYERS) {
-            clearInterval(interval);
-            // Lobby is full — transition to practice warning phase
-            setPracticePhase('warning');
-            setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
-            return INITIAL_PLAYERS;
-          }
-          return next;
-        });
-      }, 300);
-    }
-    return () => clearInterval(interval);
-  }, [gameState]);
+    if (gameState !== 'practice' || practicePhase !== 'filling') return;
 
-  // Once lobby is full, show 30s warning banner in practice
+    const interval = setInterval(() => {
+      setWaitingPlayers(prev => {
+        const next = prev + 1;
+        if (next >= INITIAL_PLAYERS) {
+          clearInterval(interval);
+          setPracticePhase('warning');
+          setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+          return INITIAL_PLAYERS;
+        }
+        return next;
+      });
+    }, LOBBY_FILL_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [gameState, practicePhase]);
+
+  // ── 30s warning countdown once lobby is full ────────────────────────────
   useEffect(() => {
-    let timer;
-    if (gameState === 'practice' && practicePhase === 'warning') {
-      timer = setInterval(() => {
-        setPracticeWarningTimer(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            endPractice();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+    if (gameState !== 'practice' || practicePhase !== 'warning') return;
+
+    const timer = setInterval(() => {
+      setPracticeWarningTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          endPractice();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     return () => clearInterval(timer);
   }, [gameState, practicePhase]);
 
-  // Standing room lobby timer
+  // ── Standing room lobby timer ───────────────────────────────────────────
   useEffect(() => {
-    let timer;
-    if (gameState === 'standing') {
-      setLobbyTimer(ROUND_START_TIMEOUT);
-      timer = setInterval(() => {
-        setLobbyTimer(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            startBasketballRound();
-            return 0;
-          }
-          return prev - 1;
-        });
-        setReadyCount(prev => (prev < INITIAL_PLAYERS - 1 && Math.random() > 0.7) ? prev + 1 : prev);
-      }, 1000);
-    }
+    if (gameState !== 'standing') return;
+    setLobbyTimer(ROUND_START_TIMEOUT);
+
+    const timer = setInterval(() => {
+      setLobbyTimer(prev => {
+        if (prev <= 1) { clearInterval(timer); startBasketballRound(); return 0; }
+        return prev - 1;
+      });
+      setReadyCount(prev =>
+        prev < INITIAL_PLAYERS - 1 && Math.random() > 0.7 ? prev + 1 : prev
+      );
+    }, 1000);
+
     return () => clearInterval(timer);
   }, [gameState]);
 
-  // Post-round auto-advance timer
+  // ── Post-round auto-advance ─────────────────────────────────────────────
   useEffect(() => {
-    let timer;
-    if (gameState === 'post_round') {
-      setPostRoundTimer(POST_ROUND_WAIT);
-      timer = setInterval(() => {
-        setPostRoundTimer(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            proceedToNextRound();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+    if (gameState !== 'post_round') return;
+    setPostRoundTimer(POST_ROUND_WAIT);
+
+    const timer = setInterval(() => {
+      setPostRoundTimer(prev => {
+        if (prev <= 1) { clearInterval(timer); proceedToNextRound(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+
     return () => clearInterval(timer);
   }, [gameState]);
 
-  // When waiting players hits 10, auto-switch waiting→practice
-  useEffect(() => {
-    if (gameState === 'waiting' && waitingPlayers >= INITIAL_PLAYERS) {
-      setGameState('practice');
-      setPracticePhase('playing');
-    }
-  }, [waitingPlayers, gameState]);
+  // ── Action handlers ─────────────────────────────────────────────────────
 
   const handleSelectContest = (amount) => {
     setSelectedBuyIn(amount);
@@ -165,8 +152,9 @@ const App = () => {
   const confirmJoin = () => {
     setBalance(prev => prev - selectedBuyIn);
     setShowConfirm(false);
-    setWaitingPlayers(1);
-    setGameState('waiting');
+    setWaitingPlayers(1);          // user is player #1
+    setPracticePhase('filling');
+    setGameState('practice');      // straight into practice — no waiting screen
   };
 
   const endPractice = () => {
@@ -178,7 +166,6 @@ const App = () => {
   };
 
   const exitPracticeEarly = () => {
-    // Stop the practice game, go to a lobby-waiting screen
     setGameState('practice_lobby_wait');
   };
 
@@ -208,21 +195,18 @@ const App = () => {
   };
 
   const startBasketballRound = () => {
-    if (isUserEliminated) {
-      finishShooting();
-    } else {
-      setGameState('playing_game');
-    }
+    if (isUserEliminated) finishShooting();
+    else setGameState('playing_game');
   };
 
   const finishShooting = (userScore = null) => {
     setPlayers(currentPlayers => {
       const updatedPlayers = currentPlayers.map(p => {
         if (p.isEliminated) return p;
-        let roundPoints = (p.name === "You (User)" && userScore !== null)
-          ? userScore
-          : Math.floor(Math.random() * 15) + 5;
-
+        const roundPoints =
+          p.name === "You (User)" && userScore !== null
+            ? userScore
+            : Math.floor(Math.random() * 15) + 5;
         const newPointsHistory = [...p.points, roundPoints];
         return {
           ...p,
@@ -231,12 +215,8 @@ const App = () => {
           totalPoints: newPointsHistory.reduce((a, b) => a + b, 0)
         };
       });
-
       setGameState('cut_reveal_delay');
-      setTimeout(() => {
-        processElimination(updatedPlayers);
-      }, 1500);
-
+      setTimeout(() => processElimination(updatedPlayers), 1500);
       return updatedPlayers;
     });
   };
@@ -246,21 +226,22 @@ const App = () => {
     const survivalTargets = { 1: 6, 2: 4, 3: 2, 4: 1 };
     const targetCount = survivalTargets[currentRound];
 
-    const sortedActive = [...activePlayersBeforeCut].sort((a, b) => {
-      if (b.currentRoundScore !== a.currentRoundScore) return b.currentRoundScore - a.currentRoundScore;
-      return b.totalPoints - a.totalPoints;
-    });
+    const sortedActive = [...activePlayersBeforeCut].sort((a, b) =>
+      b.currentRoundScore !== a.currentRoundScore
+        ? b.currentRoundScore - a.currentRoundScore
+        : b.totalPoints - a.totalPoints
+    );
 
     const thresholdPlayer = sortedActive[targetCount - 1];
-    const thresholdScore = thresholdPlayer ? thresholdPlayer.currentRoundScore : 0;
-    const thresholdTotal = thresholdPlayer ? thresholdPlayer.totalPoints : 0;
+    const thresholdScore = thresholdPlayer?.currentRoundScore ?? 0;
+    const thresholdTotal = thresholdPlayer?.totalPoints ?? 0;
 
-    const finalPlayers = playersAtEndOfRound.map((p) => {
+    const finalPlayers = playersAtEndOfRound.map(p => {
       if (p.isEliminated) return p;
-      const survives = p.currentRoundScore > thresholdScore ||
+      const survives =
+        p.currentRoundScore > thresholdScore ||
         (p.currentRoundScore === thresholdScore && p.totalPoints >= thresholdTotal);
-      if (!survives) return { ...p, isEliminated: true, eliminatedAt: currentRound };
-      return p;
+      return survives ? p : { ...p, isEliminated: true, eliminatedAt: currentRound };
     });
 
     const rankedList = [...finalPlayers].sort((a, b) => {
@@ -275,8 +256,7 @@ const App = () => {
 
     if (currentRound === 4 || survivors.length <= 1) {
       if (survivors.some(w => w.name.includes("You"))) {
-        const share = prizePool / survivors.length;
-        setBalance(prev => prev + share);
+        setBalance(prev => prev + prizePool / survivors.length);
       }
       setGameState('finished');
     } else {
@@ -296,20 +276,21 @@ const App = () => {
     setGameState('selection');
     setSelectedBuyIn(null);
     setWaitingPlayers(0);
-    setPracticePhase('playing');
+    setPracticePhase('filling');
     setShowPracticeOver(false);
   };
 
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="h-screen bg-[#f8f9fa] text-neutral-900 overflow-hidden font-sans relative flex flex-col items-center justify-center">
 
-      {/* BACKGROUND TEXTURE LAYERS */}
+      {/* BACKGROUND */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-0 opacity-[0.04] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
         <div className="absolute top-1/2 -left-[10%] -translate-y-1/2 w-[45vw] h-[45vw] border-[2px] border-orange-500/10 rounded-full"></div>
         <div className="absolute top-1/2 -right-[10%] -translate-y-1/2 w-[45vw] h-[45vw] border-[2px] border-orange-500/10 rounded-full"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] border-[1px] border-neutral-900/5 rounded-full flex items-center justify-center">
-          <div className="absolute h-[200vh] w-[1px] bg-neutral-900/[0.04]"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] border-[1px] border-neutral-900/5 rounded-full">
+          <div className="absolute h-[200vh] w-[1px] bg-neutral-900/[0.04] left-1/2"></div>
         </div>
         <div className="absolute top-1/2 -left-[5%] -translate-y-1/2 w-[20vw] h-[15vw] border-[1px] border-neutral-900/5 rounded-r-xl bg-neutral-900/[0.01]"></div>
         <div className="absolute top-1/2 -right-[5%] -translate-y-1/2 w-[20vw] h-[15vw] border-[1px] border-neutral-900/5 rounded-l-xl bg-neutral-900/[0.01]"></div>
@@ -318,7 +299,7 @@ const App = () => {
 
       <div className="w-full max-w-4xl h-full flex flex-col justify-center p-4 md:p-6 relative z-10">
 
-        {/* SELECTION UI */}
+        {/* ── SELECTION ──────────────────────────────────────────────────── */}
         {gameState === 'selection' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col h-full max-h-[800px]">
             <div className="flex justify-between items-center bg-white/80 backdrop-blur-xl border border-white/50 p-3 rounded-2xl mb-6 shadow-xl shadow-neutral-200/20">
@@ -371,101 +352,111 @@ const App = () => {
           </div>
         )}
 
-        {/* WAITING ROOM — shown briefly while players fill, then transitions to practice */}
-        {gameState === 'waiting' && (
-          <div className="flex flex-col items-center justify-center h-full animate-in zoom-in duration-300">
-            <div className="relative w-40 h-40 mb-8">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-neutral-200" />
-                <circle
-                  cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="8"
-                  strokeDasharray={440} strokeDashoffset={440 - (440 * waitingPlayers) / 10}
-                  className="text-orange-500 transition-all duration-300" strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-5xl font-black italic text-neutral-800">{waitingPlayers}</span>
-                <span className="text-[10px] text-neutral-400 font-black uppercase tracking-tighter">Players</span>
-              </div>
-            </div>
-            <h2 className="text-3xl font-black uppercase italic tracking-tight text-center text-neutral-800">Filling Lobby...</h2>
-            <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest mt-2">Practice mode starting shortly</p>
-          </div>
-        )}
-
-        {/* ─────────────────────────────────────────────────────────
-            PRACTICE MODE
-        ───────────────────────────────────────────────────────── */}
+        {/* ── PRACTICE MODE ──────────────────────────────────────────────── */}
         {gameState === 'practice' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col relative z-20">
 
-            {/* Warning banner — appears when lobby is full */}
-            {practicePhase === 'warning' && (
-              <div className="animate-in slide-in-from-top-3 duration-500 shrink-0 mb-2">
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
+            {practicePhase === 'filling' ? (
+              /* Lobby still filling */
+              <div className="shrink-0 mb-2">
+                <div className="bg-white border border-neutral-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
-                      <Clock size={16} className="text-amber-600" />
+                    <div className="w-8 h-8 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center shrink-0">
+                      <Dumbbell size={15} className="text-blue-500" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Lobby Full — Practice Ending Soon</p>
-                      <p className="text-[9px] text-amber-500 font-bold uppercase tracking-wide">Your warmup score won't count. Get ready for the real game!</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-neutral-700">Practice Mode</p>
+                      <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-wide">Warm up while your lobby fills</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-center">
-                      <p className="text-2xl font-black font-mono text-amber-600 leading-none">
-                        :{practiceWarningTimer.toString().padStart(2, '0')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={exitPracticeEarly}
-                      className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap"
-                    >
-                      <StopCircle size={12} />
-                      End Practice
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* Header bar */}
-            <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Practice Mode</span>
-                <span className="bg-blue-100 text-blue-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-blue-200 ml-1">Score doesn't count</span>
-              </div>
-              <div className="flex items-center gap-3">
-                {practicePhase === 'playing' && (
-                  <div className="flex items-center gap-1.5 text-neutral-400">
-                    <Users size={11} />
-                    <span className="text-[9px] font-black uppercase tracking-widest">{waitingPlayers}/10 joined</span>
+                  {/* Player pip dots + count */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
+                        <div
+                          key={i}
+                          className={`w-2 h-2 rounded-full transition-all duration-500 ${
+                            i < waitingPlayers
+                              ? i === 0 ? 'bg-orange-500' : 'bg-emerald-400'
+                              : 'bg-neutral-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <div className="text-right min-w-[40px]">
+                      <p className="text-sm font-black font-mono text-neutral-800 leading-none">
+                        {waitingPlayers}<span className="text-neutral-300">/{INITIAL_PLAYERS}</span>
+                      </p>
+                      <p className="text-[8px] text-neutral-400 font-bold uppercase tracking-widest">Players</p>
+                    </div>
                   </div>
-                )}
-                {practicePhase === 'playing' && (
+
                   <button
                     onClick={exitPracticeEarly}
-                    className="text-[9px] font-black uppercase text-neutral-400 hover:text-orange-500 transition-colors flex items-center gap-1"
+                    className="text-[9px] font-black uppercase text-neutral-400 hover:text-orange-500 transition-colors flex items-center gap-1 shrink-0"
                   >
                     <StopCircle size={11} />
                     End Practice
                   </button>
-                )}
+                </div>
+              </div>
+            ) : (
+              /* Lobby full — warning countdown */
+              <div className="animate-in slide-in-from-top-3 duration-500 shrink-0 mb-2">
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
+                      <Clock size={15} className="text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Lobby Full — Practice Ending Soon</p>
+                      <p className="text-[9px] text-amber-500 font-bold uppercase tracking-wide">Warmup score won't count. Get ready for the real game!</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    {/* All 10 pips filled */}
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
+                        <div key={i} className={`w-2 h-2 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-emerald-400'}`} />
+                      ))}
+                    </div>
+                    <p className="text-2xl font-black font-mono text-amber-600 leading-none">
+                      :{practiceWarningTimer.toString().padStart(2, '0')}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={exitPracticeEarly}
+                    className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                  >
+                    <StopCircle size={12} />
+                    End Practice
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* iframe header */}
+            <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex items-center justify-between px-4 shrink-0 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Practice</span>
+                <span className="bg-blue-100 text-blue-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-blue-200 ml-1">
+                  Score doesn't count
+                </span>
               </div>
             </div>
 
-            {/* Basketball iframe */}
+            {/* Basketball practice iframe */}
             <div className="flex-grow w-full bg-neutral-900 rounded-b-2xl border border-neutral-200 overflow-hidden shadow-2xl min-h-[400px]">
               <iframe src="/basketball-practice.html" className="w-full h-full border-none" title="Practice Round" />
             </div>
           </div>
         )}
 
-        {/* ─────────────────────────────────────────────────────────
-            PRACTICE LOBBY WAIT (user exited practice early)
-        ───────────────────────────────────────────────────────── */}
+        {/* ── PRACTICE LOBBY WAIT (exited early) ────────────────────────── */}
         {gameState === 'practice_lobby_wait' && (
           <div className="animate-in fade-in duration-400 flex flex-col items-center justify-center h-full text-center gap-6">
             <div className="w-20 h-20 bg-orange-50 border border-orange-100 rounded-full flex items-center justify-center mb-2">
@@ -476,7 +467,6 @@ const App = () => {
               <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Waiting for the tournament to begin...</p>
             </div>
 
-            {/* Mini player count */}
             <div className="bg-white border border-neutral-200 rounded-2xl px-8 py-5 shadow-sm flex flex-col items-center gap-3">
               <div className="flex items-center gap-2 text-neutral-400">
                 <Users size={14} />
@@ -486,7 +476,11 @@ const App = () => {
                 {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
                   <div
                     key={i}
-                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${i < waitingPlayers ? 'bg-emerald-400' : 'bg-neutral-200'}`}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                      i < waitingPlayers
+                        ? i === 0 ? 'bg-orange-500' : 'bg-emerald-400'
+                        : 'bg-neutral-200'
+                    }`}
                   />
                 ))}
               </div>
@@ -508,9 +502,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ─────────────────────────────────────────────────────────
-            PRACTICE OVER INTERSTITIAL
-        ───────────────────────────────────────────────────────── */}
+        {/* ── PRACTICE OVER INTERSTITIAL ─────────────────────────────────── */}
         {showPracticeOver && (
           <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-neutral-900/60 animate-in fade-in duration-300">
             <div className="text-center animate-in zoom-in duration-400">
@@ -528,7 +520,7 @@ const App = () => {
           </div>
         )}
 
-        {/* STANDING ROOM */}
+        {/* ── STANDING ROOM ──────────────────────────────────────────────── */}
         {gameState === 'standing' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col">
             <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
@@ -596,7 +588,7 @@ const App = () => {
           </div>
         )}
 
-        {/* GAME FRAME */}
+        {/* ── LIVE GAME FRAME ────────────────────────────────────────────── */}
         {gameState === 'playing_game' && (
           <div className="animate-in zoom-in duration-300 h-full flex flex-col relative z-20">
             <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0 shadow-sm">
@@ -612,7 +604,7 @@ const App = () => {
           </div>
         )}
 
-        {/* CUT REVEAL DELAY */}
+        {/* ── CUT REVEAL DELAY ───────────────────────────────────────────── */}
         {gameState === 'cut_reveal_delay' && (
           <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center h-full text-center">
             <Loader2 className="animate-spin text-orange-500 mb-6" size={48} />
@@ -621,7 +613,7 @@ const App = () => {
           </div>
         )}
 
-        {/* POST-ROUND SUMMARY */}
+        {/* ── POST-ROUND SUMMARY ─────────────────────────────────────────── */}
         {gameState === 'post_round' && (
           <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-center bg-white/95 backdrop-blur-xl p-6 rounded-[32px] border border-white/50 gap-6 shrink-0 shadow-sm">
@@ -643,19 +635,12 @@ const App = () => {
                   <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Resetting In</p>
                   <p className="font-mono font-bold text-2xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
                 </div>
-
                 {!isUserEliminated ? (
-                  <button
-                    onClick={proceedToNextRound}
-                    className="bg-neutral-900 text-white hover:bg-neutral-800 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-neutral-200 text-xs"
-                  >
+                  <button onClick={proceedToNextRound} className="bg-neutral-900 text-white hover:bg-neutral-800 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-neutral-200 text-xs">
                     Continue <ArrowRight size={16} />
                   </button>
                 ) : (
-                  <button
-                    onClick={exitToLobby}
-                    className="bg-red-500 text-white hover:bg-red-600 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-100 text-xs"
-                  >
+                  <button onClick={exitToLobby} className="bg-red-500 text-white hover:bg-red-600 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-100 text-xs">
                     Exit Tournament <LogOut size={16} />
                   </button>
                 )}
@@ -680,12 +665,12 @@ const App = () => {
                         <span className={`font-black uppercase tracking-tight text-sm ${p.name.includes("You") ? (p.isEliminated ? "text-red-500" : "text-orange-600") : "text-neutral-700"}`}>
                           {p.name}
                         </span>
-                        {p.isEliminated && p.eliminatedAt === currentRound && <span className="text-[8px] text-red-400 font-black uppercase">Cut this round</span>}
+                        {p.isEliminated && p.eliminatedAt === currentRound && (
+                          <span className="text-[8px] text-red-400 font-black uppercase">Cut this round</span>
+                        )}
                       </div>
                     </div>
-                    <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">
-                      {p.currentRoundScore}
-                    </div>
+                    <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">{p.currentRoundScore}</div>
                   </div>
                 ))}
               </div>
@@ -693,14 +678,12 @@ const App = () => {
           </div>
         )}
 
-        {/* FINISHED SCREEN */}
+        {/* ── FINISHED ───────────────────────────────────────────────────── */}
         {gameState === 'finished' && (
           <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
             <div className="bg-white/95 border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-30" />
-
               <Trophy size={60} className="mx-auto text-orange-500 mb-4 drop-shadow-[0_4px_12px_rgba(249,115,22,0.3)] animate-bounce" />
-
               <div className="mb-4">
                 <h1 className="text-[10px] text-neutral-400 font-black uppercase tracking-widest mb-1">Tournament Champion</h1>
                 <div className="flex flex-col items-center justify-center gap-1">
@@ -713,7 +696,6 @@ const App = () => {
                   ))}
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
                 <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
                   <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Final Prize</p>
@@ -724,11 +706,7 @@ const App = () => {
                   <p className="text-2xl font-black font-mono text-orange-500">{players.find(p => !p.isEliminated)?.currentRoundScore || 0}</p>
                 </div>
               </div>
-
-              <button
-                onClick={exitToLobby}
-                className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs relative z-10"
-              >
+              <button onClick={exitToLobby} className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs relative z-10">
                 Return to Lobby
               </button>
             </div>
@@ -772,7 +750,7 @@ const App = () => {
           </div>
         )}
 
-        {/* CONFIRM MODAL */}
+        {/* ── CONFIRM MODAL ──────────────────────────────────────────────── */}
         {showConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-white/40 animate-in fade-in duration-200">
             <div className="bg-white border border-neutral-200 w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
@@ -785,25 +763,18 @@ const App = () => {
               <h3 className="text-3xl font-black uppercase italic mb-2 text-center leading-tight text-neutral-800 relative z-10">Join for ${selectedBuyIn}?</h3>
               <p className="text-center text-neutral-400 text-xs font-bold uppercase tracking-widest mb-2 relative z-10">Current Balance: ${balance.toFixed(2)}</p>
 
-              {/* Practice mode callout */}
               <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 mb-6 flex items-start gap-3 relative z-10">
                 <Dumbbell size={14} className="text-blue-500 mt-0.5 shrink-0" />
                 <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wide leading-relaxed">
-                  Practice mode will start while your lobby fills up. Warm up your shot before the real game begins!
+                  Practice starts immediately after you confirm. Warm up your shot while the lobby fills!
                 </p>
               </div>
 
               <div className="space-y-3 relative z-10">
-                <button
-                  onClick={confirmJoin}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-100 active:scale-95 transition-all"
-                >
+                <button onClick={confirmJoin} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-100 active:scale-95 transition-all">
                   Confirm Entry
                 </button>
-                <button
-                  onClick={() => setShowConfirm(false)}
-                  className="w-full bg-neutral-100 hover:bg-neutral-200 py-4 rounded-2xl font-black uppercase tracking-widest text-xs text-neutral-500"
-                >
+                <button onClick={() => setShowConfirm(false)} className="w-full bg-neutral-100 hover:bg-neutral-200 py-4 rounded-2xl font-black uppercase tracking-widest text-xs text-neutral-500">
                   Cancel
                 </button>
               </div>
