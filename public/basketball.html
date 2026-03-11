@@ -51,11 +51,14 @@
                 <h2 class="text-4xl font-bold text-white mb-2 uppercase italic">Buzzer Beater!</h2>
                 <p class="text-gray-400 mb-6 uppercase tracking-widest">Final Score</p>
                 <div id="final-score-text" class="text-7xl font-mono text-orange-500 mb-8 font-black">0</div>
-                <button onclick="submitScoreAndReturn()" class="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter mb-3">
-                    Submit Score
-                </button>
-                <button onclick="resetGame()" class="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 rounded-lg text-lg transition-transform active:scale-95 uppercase tracking-tighter">
-                    Play Again
+                <!-- Submit Score with 5s auto-advance countdown -->
+                <button
+                    id="submit-score-btn"
+                    onclick="submitScoreAndReturn()"
+                    class="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter flex items-center justify-center gap-3"
+                >
+                    <span>Submit Score</span>
+                    <span id="auto-countdown" class="bg-orange-600/50 text-orange-100 text-sm font-black font-mono px-2 py-0.5 rounded-md min-w-[28px]">5</span>
                 </button>
             </div>
         </div>
@@ -73,8 +76,9 @@
 
         let timeLeft = 30;
         let isGameActive = false;
-        let isBuzzerPending = false; // NEW: Track if we are waiting for balls to land after 0:00
+        let isBuzzerPending = false;
         let gameTimerInterval = null;
+        let autoCountdownInterval = null;
 
         // PHYSICS CONSTANTS
         const GRAVITY = -0.0022; 
@@ -125,6 +129,7 @@
         }
 
         function submitScoreAndReturn() {
+            clearInterval(autoCountdownInterval);
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage({ type: 'GAME_COMPLETE', score: score }, '*');
             } else {
@@ -174,10 +179,7 @@
         }
 
         function checkGameEndConditions() {
-            // Stop allowing new shots
             isGameActive = false;
-            
-            // If there are balls in the air, wait for them to finish
             if (activeShots.length > 0) {
                 isBuzzerPending = true;
                 document.getElementById('timer').classList.add('buzzer-active');
@@ -191,24 +193,20 @@
             isBuzzerPending = false;
             document.getElementById('game-over-modal').classList.remove('hidden');
             document.getElementById('final-score-text').innerText = score;
-        }
 
-        function resetGame() {
-            score = 0;
-            document.getElementById('score').innerText = score;
-            document.getElementById('game-over-modal').classList.add('hidden');
-            
-            // Cleanup any existing active shots to rack
-            activeShots.forEach(shot => {
-                const b = shot.ball;
-                b.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
-                b.userData.velocity.set(0,0,0);
-                b.userData.hasScored = false;
-                if (!balls.includes(b)) balls.push(b);
-            });
-            activeShots = [];
-            
-            startCountdown();
+            // 5-second auto-submit countdown
+            let secondsLeft = 5;
+            document.getElementById('auto-countdown').innerText = secondsLeft;
+
+            autoCountdownInterval = setInterval(() => {
+                secondsLeft--;
+                const el = document.getElementById('auto-countdown');
+                if (el) el.innerText = secondsLeft;
+                if (secondsLeft <= 0) {
+                    clearInterval(autoCountdownInterval);
+                    submitScoreAndReturn();
+                }
+            }, 1000);
         }
 
         function init() {
@@ -627,7 +625,6 @@
                         balls.push(ball); 
                         activeShots.splice(i, 1);
                         
-                        // NEW: If we were waiting for the buzzer beater and this was the last shot
                         if (isBuzzerPending && activeShots.length === 0) {
                             showGameOver();
                         }
@@ -643,7 +640,6 @@
                         ball.userData.velocity.set(0,0,0); ball.userData.hasScored = false;
                         balls.push(ball); activeShots.splice(i, 1);
                         
-                        // NEW: Check buzzer beater end on fall-through-floor fails too
                         if (isBuzzerPending && activeShots.length === 0) {
                             showGameOver();
                         }
@@ -696,8 +692,6 @@
         }
 
         function handleScored() {
-            // Note: scoring is allowed even if isGameActive is false, 
-            // provided the ball was already in flight (activeShots)
             score += 2; 
             document.getElementById('score').innerText = score;
         }
