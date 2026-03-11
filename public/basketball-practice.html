@@ -15,9 +15,6 @@
             transition: border-color 0.2s;
         }
         #crosshair.active { border-color: #fb923c; border-style: solid; border-width: 3px; }
-        .digital-font { font-family: 'Courier New', Courier, monospace; }
-        .buzzer-active { color: #f87171; animation: blink 0.5s step-end infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
@@ -25,30 +22,25 @@
     <div id="ui-layer">
         <div id="crosshair"></div>
 
-        <!-- Score and Timer HUD -->
-        <div class="absolute top-5 left-5 bg-black/60 p-4 rounded-xl border border-white/20 text-white pointer-events-auto backdrop-blur-md min-w-[200px]">
+        <!-- Score-only HUD (no timer) -->
+        <div class="absolute top-5 left-5 bg-black/60 p-4 rounded-xl border border-white/20 text-white pointer-events-auto backdrop-blur-md min-w-[160px]">
             <div class="flex items-center gap-2 mb-3">
                 <h1 class="text-xl font-bold uppercase tracking-widest text-blue-400 italic">Practice</h1>
                 <span class="bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">Warmup</span>
             </div>
-            <div class="mt-1 flex flex-col gap-2 font-mono">
+            <div class="font-mono">
                 <div class="flex justify-between items-center text-lg">
                     <span>SCORE:</span>
                     <span id="score" class="text-blue-400 font-bold">0</span>
-                </div>
-                <div class="flex justify-between items-center text-lg">
-                    <span>TIME:</span>
-                    <span id="timer" class="text-red-400 font-bold">30</span>
                 </div>
             </div>
             <p class="text-[9px] text-white/30 uppercase tracking-widest font-bold mt-3">Score doesn't count</p>
         </div>
 
-        <!-- Game Over Modal — Practice Over -->
+        <!-- Practice Over Modal -->
         <div id="game-over-modal" class="hidden absolute inset-0 flex items-center justify-center bg-black/80 pointer-events-auto">
             <div class="bg-zinc-900 border-2 border-blue-500 p-10 rounded-2xl text-center shadow-2xl max-w-sm w-full">
                 <div class="w-16 h-16 bg-blue-500/20 border border-blue-400/40 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <!-- Dumbbell icon SVG -->
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M6 5v14"/><path d="M18 5v14"/><path d="M2 9v6"/><path d="M22 9v6"/>
                         <rect x="6" y="8" width="12" height="8" rx="1"/>
@@ -57,9 +49,15 @@
                 <h2 class="text-4xl font-bold text-white mb-1 uppercase italic tracking-tight">Practice Over</h2>
                 <p class="text-gray-400 mb-2 uppercase tracking-widest text-xs">Your warmup score</p>
                 <div id="final-score-text" class="text-7xl font-mono text-blue-400 mb-2 font-black">0</div>
-                <p class="text-white/20 text-[10px] uppercase tracking-widest font-bold mb-8">Score doesn't count toward tournament</p>
-                <button onclick="goToGame()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter">
-                    Go to Game
+                <p class="text-white/20 text-[10px] uppercase tracking-widest font-bold mb-6">Score doesn't count toward tournament</p>
+                <!-- Button with 5s auto-advance countdown -->
+                <button
+                    id="go-to-game-btn"
+                    onclick="goToGame()"
+                    class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-lg text-xl transition-transform active:scale-95 uppercase tracking-tighter flex items-center justify-center gap-3"
+                >
+                    <span>Go to Game</span>
+                    <span id="auto-countdown" class="bg-orange-600/60 text-orange-200 text-sm font-black font-mono px-2 py-0.5 rounded-md min-w-[28px]">5</span>
                 </button>
             </div>
         </div>
@@ -75,26 +73,22 @@
         let isNetWiggling = false;
         let originalNetVertices = [];
 
-        let timeLeft = 30;
-        let isGameActive = false;
-        let isBuzzerPending = false;
-        let gameTimerInterval = null;
+        // Game is always active — no internal timer
+        let isGameActive = true;
+        let autoCountdownInterval = null;
 
         // PHYSICS CONSTANTS
         const GRAVITY = -0.0022;
         const PULL_POWER_X = 0.06;
         const PULL_POWER_FORWARD = 0.0675;
-
         const BASE_LIFT = 0.14;
         const FORWARD_Y_BOOST = 1.25;
         const FORWARD_Z_BOOST = 2.45;
-
         const RIM_Z = -1.95;
         const RIM_Y = 4.3;
         const BACKBOARD_Z = -2.75;
         const BACKBOARD_Y = 4.9;
         const NET_HEIGHT = 0.8;
-
         const NET_FRICTION = 0.94;
         const SPIN_FRICTION_FACTOR = 0.008;
         const GLOBAL_SPEED_MULTIPLIER = 0.5;
@@ -113,13 +107,10 @@
         const MAX_DOTS = 150;
         const BALL_RADIUS = 0.22;
         const BALL_DIAMETER = BALL_RADIUS * 2;
-
         const RACK_FRONT_Z = 4.5;
         const RACK_FRONT_LIMIT = RACK_FRONT_Z - BALL_RADIUS - 0.2;
-
         const RAMP_BASE_Y = 1.2;
         const RAMP_SLOPE = 0.012;
-
         const WALL_LEFT = -1.95;
         const WALL_RIGHT = 1.95;
         const WALL_BACK = -2.95;
@@ -128,47 +119,47 @@
             return RAMP_BASE_Y + ((z - RACK_FRONT_LIMIT) * RAMP_SLOPE) + BALL_RADIUS;
         }
 
+        // Called by the button and also auto-fires when countdown hits 0
         function goToGame() {
+            clearInterval(autoCountdownInterval);
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage({ type: 'PRACTICE_COMPLETE' }, '*');
             }
         }
 
-        // No countdown — start immediately
-        function beginGame() {
-            isGameActive = true;
-            isBuzzerPending = false;
-            timeLeft = 30;
-            const timerEl = document.getElementById('timer');
-            timerEl.innerText = timeLeft;
-            timerEl.classList.remove('buzzer-active');
+        // Show the modal and start the 5s auto-advance
+        function showPracticeOver() {
+            isGameActive = false;
+            heldBall = null;
+            isPullingBack = false;
+            trajectoryDots.forEach(d => d.visible = false);
+            if (projectionMarker) projectionMarker.visible = false;
+            document.getElementById('crosshair').classList.remove('active');
 
-            gameTimerInterval = setInterval(() => {
-                timeLeft--;
-                document.getElementById('timer').innerText = Math.max(0, timeLeft);
-                if (timeLeft <= 0) {
-                    clearInterval(gameTimerInterval);
-                    checkGameEndConditions();
+            document.getElementById('final-score-text').innerText = score;
+            document.getElementById('game-over-modal').classList.remove('hidden');
+
+            // 5-second auto-advance countdown on the button
+            let secondsLeft = 5;
+            document.getElementById('auto-countdown').innerText = secondsLeft;
+
+            autoCountdownInterval = setInterval(() => {
+                secondsLeft--;
+                const el = document.getElementById('auto-countdown');
+                if (el) el.innerText = secondsLeft;
+                if (secondsLeft <= 0) {
+                    clearInterval(autoCountdownInterval);
+                    goToGame();
                 }
             }, 1000);
         }
 
-        function checkGameEndConditions() {
-            isGameActive = false;
-            if (activeShots.length > 0) {
-                isBuzzerPending = true;
-                document.getElementById('timer').classList.add('buzzer-active');
-                document.getElementById('timer').innerText = "0";
-            } else {
-                showGameOver();
+        // Listen for the parent React app telling us practice time is up
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'END_PRACTICE') {
+                showPracticeOver();
             }
-        }
-
-        function showGameOver() {
-            isBuzzerPending = false;
-            document.getElementById('game-over-modal').classList.remove('hidden');
-            document.getElementById('final-score-text').innerText = score;
-        }
+        });
 
         function init() {
             scene = new THREE.Scene();
@@ -211,9 +202,7 @@
             window.addEventListener('mouseup', onMouseUp);
 
             animate();
-
-            // Start game immediately — no countdown
-            beginGame();
+            // Game is immediately active — no countdown, no internal timer
         }
 
         function createHardwoodTexture() {
@@ -538,10 +527,12 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
             if (projectionMarker?.visible) {
                 const pulse = 1 + Math.sin(Date.now() * 0.015) * 0.25;
                 projectionMarker.scale.set(pulse, pulse, pulse);
             }
+
             if (isNetWiggling) {
                 netWiggleTime += 0.05;
                 const posAttr = net.geometry.attributes.position;
@@ -554,7 +545,10 @@
                 posAttr.needsUpdate = true;
                 if (netWiggleTime > 2.0) isNetWiggling = false;
             }
-            if (heldBall && isPullingBack) updateTrajectoryGuide(heldBall.position, calculateVelocityFromPull(heldBall.position, getMouseIn3DSpace(heldBall.position.z)).multiplyScalar(GLOBAL_SPEED_MULTIPLIER));
+
+            if (heldBall && isPullingBack) {
+                updateTrajectoryGuide(heldBall.position, calculateVelocityFromPull(heldBall.position, getMouseIn3DSpace(heldBall.position.z)).multiplyScalar(GLOBAL_SPEED_MULTIPLIER));
+            }
 
             for (let i = activeShots.length - 1; i >= 0; i--) {
                 const shot = activeShots[i], ball = shot.ball, vel = shot.velocity;
@@ -572,7 +566,6 @@
                         ball.userData.spin = 0;
                         balls.push(ball);
                         activeShots.splice(i, 1);
-                        if (isBuzzerPending && activeShots.length === 0) showGameOver();
                     }
                 } else {
                     if (ball.userData.inNet) vel.multiplyScalar(NET_FRICTION);
@@ -584,7 +577,6 @@
                         ball.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
                         ball.userData.velocity.set(0, 0, 0); ball.userData.hasScored = false;
                         balls.push(ball); activeShots.splice(i, 1);
-                        if (isBuzzerPending && activeShots.length === 0) showGameOver();
                     }
                 }
             }

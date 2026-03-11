@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Trophy,
   Users,
@@ -50,6 +50,7 @@ const App = () => {
   const [practicePhase, setPracticePhase] = useState('filling');
   const [practiceWarningTimer, setPracticeWarningTimer] = useState(PRACTICE_WARNING_DURATION);
   const [showPracticeOver, setShowPracticeOver] = useState(false);
+  const practiceIframeRef = useRef(null);
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
@@ -64,7 +65,8 @@ const App = () => {
         finishShooting(event.data.score);
       }
       if (event.data.type === 'PRACTICE_COMPLETE') {
-        exitPracticeEarly();
+        // Iframe's 5s countdown finished or user clicked "Go to Game"
+        endPractice();
       }
     };
     window.addEventListener('message', handleMessage);
@@ -99,7 +101,11 @@ const App = () => {
       setPracticeWarningTimer(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          endPractice();
+          // Tell the iframe to show its "Practice Over" modal with the 5s countdown
+          const iframe = practiceIframeRef.current;
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({ type: 'END_PRACTICE' }, '*');
+          }
           return 0;
         }
         return prev - 1;
@@ -451,7 +457,7 @@ const App = () => {
 
             {/* Basketball practice iframe */}
             <div className="flex-grow w-full bg-neutral-900 rounded-b-2xl border border-neutral-200 overflow-hidden shadow-2xl min-h-[400px]">
-              <iframe src="/basketball-practice.html" className="w-full h-full border-none" title="Practice Round" />
+              <iframe ref={practiceIframeRef} src="/basketball-practice.html" className="w-full h-full border-none" title="Practice Round" />
             </div>
           </div>
         )}
