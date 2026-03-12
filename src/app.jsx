@@ -73,17 +73,26 @@ const App = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [players, currentRound, gameState]);
 
-  // ── Lobby fill: +1 player every 3s while in practice/filling ───────────
+  // ── Lobby fill: +1 player every 3s ────────────────────────────────────────
+  // Runs during practice (filling phase) AND practice_lobby_wait so dots
+  // keep ticking even after the user exits practice early.
   useEffect(() => {
-    if (gameState !== 'practice' || practicePhase !== 'filling') return;
+    const isActiveFill =
+      (gameState === 'practice' && practicePhase === 'filling') ||
+      gameState === 'practice_lobby_wait';
+
+    if (!isActiveFill) return;
 
     const interval = setInterval(() => {
       setWaitingPlayers(prev => {
         const next = prev + 1;
         if (next >= INITIAL_PLAYERS) {
           clearInterval(interval);
-          setPracticePhase('warning');
-          setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+          // Only flip to warning phase if still inside the practice iframe
+          if (gameState === 'practice') {
+            setPracticePhase('warning');
+            setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+          }
           return INITIAL_PLAYERS;
         }
         return next;
@@ -92,6 +101,13 @@ const App = () => {
 
     return () => clearInterval(interval);
   }, [gameState, practicePhase]);
+
+  // ── Auto-advance from lobby-wait once all players have joined ──────────
+  useEffect(() => {
+    if (gameState === 'practice_lobby_wait' && waitingPlayers >= INITIAL_PLAYERS) {
+      initGame();
+    }
+  }, [waitingPlayers, gameState]);
 
   // ── 30s warning countdown once lobby is full ────────────────────────────
   useEffect(() => {
@@ -470,7 +486,7 @@ const App = () => {
             </div>
             <div>
               <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800 leading-none mb-2">Warming Up Done</h2>
-              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Waiting for the tournament to begin...</p>
+              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Game starts automatically when lobby is full...</p>
             </div>
 
             <div className="bg-white border border-neutral-200 rounded-2xl px-8 py-5 shadow-sm flex flex-col items-center gap-3">
@@ -493,14 +509,6 @@ const App = () => {
               <p className="text-emerald-600 font-black text-lg font-mono">{waitingPlayers} / {INITIAL_PLAYERS}</p>
               <p className="text-neutral-300 text-[9px] font-bold uppercase tracking-widest">Players Ready</p>
             </div>
-
-            <button
-              onClick={initGame}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-xl shadow-orange-100 flex items-center gap-2"
-            >
-              <Play size={14} />
-              Start Tournament Now
-            </button>
 
             <button onClick={exitToLobby} className="text-[9px] font-bold uppercase tracking-widest text-neutral-300 hover:text-neutral-500 transition-colors">
               Exit to Lobby
