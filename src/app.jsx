@@ -54,7 +54,7 @@ const App = () => {
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
-  const prizePool = INITIAL_PLAYERS * (selectedBuyIn || 0) * (1 - HOUSE_RAKE);
+  const prizePool = INITIAL_PLAYERS * (selectedBuyIn || 0); // 1st=70%, 2nd=20%, house=10%
 
   // \u2500\u2500 Message listener from basketball iframes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
