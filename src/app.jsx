@@ -26,7 +26,7 @@ const INITIAL_PLAYERS = 10;
 const CONTEST_OPTIONS = [2, 5, 10, 20, 50];
 const ROUND_START_TIMEOUT = 30;
 const POST_ROUND_WAIT = 30;
-const LOBBY_FILL_INTERVAL = 3000; // 1 new player every 3 seconds
+const LOBBY_FILL_INTERVAL = 2000; // 1 new player every 2 seconds
 const PRACTICE_WARNING_DURATION = 30; // seconds after lobby full before practice ends
 
 const App = () => {
