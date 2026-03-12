@@ -26,8 +26,8 @@ const INITIAL_PLAYERS = 10;
 const CONTEST_OPTIONS = [2, 5, 10, 20, 50];
 const ROUND_START_TIMEOUT = 30;
 const POST_ROUND_WAIT = 30;
-const LOBBY_FILL_INTERVAL = 3000; // 1 new player joins every 3 seconds
-const PRACTICE_WARNING_DURATION = 30; // seconds of warning once lobby is full
+const LOBBY_FILL_INTERVAL = 3000; // 1 new player every 3 seconds
+const PRACTICE_WARNING_DURATION = 30; // seconds after lobby full before practice ends
 
 const App = () => {
   const [balance, setBalance] = useState(1000.00);
@@ -35,7 +35,7 @@ const App = () => {
   const [selectedBuyIn, setSelectedBuyIn] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Starts at 1 (the user) when they confirm, counts up to INITIAL_PLAYERS
+  // Lobby fill counter \u2014 starts at 1 (the user) when they confirm
   const [waitingPlayers, setWaitingPlayers] = useState(0);
 
   const [currentRound, setCurrentRound] = useState(1);
@@ -45,18 +45,18 @@ const App = () => {
   const [userReady, setUserReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
 
-  // 'filling'  → lobby still filling, user shoots freely, no timer pressure
-  // 'warning'  → lobby full, 30s countdown shown, then practice ends
+  // Practice state
+  // 'filling'  \u2014 lobby still filling, user is shooting freely
+  // 'warning'  \u2014 lobby full, 30s countdown before real game
   const [practicePhase, setPracticePhase] = useState('filling');
   const [practiceWarningTimer, setPracticeWarningTimer] = useState(PRACTICE_WARNING_DURATION);
   const [showPracticeOver, setShowPracticeOver] = useState(false);
-  const practiceIframeRef = useRef(null);
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
   const prizePool = INITIAL_PLAYERS * (selectedBuyIn || 0) * (1 - HOUSE_RAKE);
 
-  // ── Message listener ────────────────────────────────────────────────────
+  // \u2500\u2500 Message listener from basketball iframes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     const handleMessage = (event) => {
       if (!event.data) return;
@@ -65,22 +65,24 @@ const App = () => {
         finishShooting(event.data.score);
       }
       if (event.data.type === 'PRACTICE_COMPLETE') {
-        // Iframe's 5s countdown finished or user clicked "Go to Game"
-        endPractice();
+        // "Go to Game" clicked inside the practice iframe
+        exitPracticeEarly();
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [players, currentRound, gameState]);
 
-  // ── Lobby fill: +1 player every 3s ────────────────────────────────────────
-  // Runs during practice (filling phase) AND practice_lobby_wait so dots
+  // \u2500\u2500 Lobby fill: 1 new player every 3 seconds while in practice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const practiceIframeRef = React.useRef(null);
+
+  // Lobby fill: +1 player every 3s
+  // Runs during practice (filling) AND practice_lobby_wait so the dots
   // keep ticking even after the user exits practice early.
   useEffect(() => {
     const isActiveFill =
       (gameState === 'practice' && practicePhase === 'filling') ||
       gameState === 'practice_lobby_wait';
-
     if (!isActiveFill) return;
 
     const interval = setInterval(() => {
@@ -88,7 +90,7 @@ const App = () => {
         const next = prev + 1;
         if (next >= INITIAL_PLAYERS) {
           clearInterval(interval);
-          // Only flip to warning phase if still inside the practice iframe
+          // Only flip to warning if still inside the practice iframe
           if (gameState === 'practice') {
             setPracticePhase('warning');
             setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
@@ -102,14 +104,14 @@ const App = () => {
     return () => clearInterval(interval);
   }, [gameState, practicePhase]);
 
-  // ── Auto-advance from lobby-wait once all players have joined ──────────
+  // Auto-advance from lobby-wait once all players have joined
   useEffect(() => {
     if (gameState === 'practice_lobby_wait' && waitingPlayers >= INITIAL_PLAYERS) {
       initGame();
     }
   }, [waitingPlayers, gameState]);
 
-  // ── 30s warning countdown once lobby is full ────────────────────────────
+  // 30s warning countdown once lobby is full
   useEffect(() => {
     if (gameState !== 'practice' || practicePhase !== 'warning') return;
 
@@ -117,7 +119,7 @@ const App = () => {
       setPracticeWarningTimer(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Tell the iframe to show its "Practice Over" modal with the 5s countdown
+          // Tell the iframe to show its modal + 5s auto-advance countdown
           const iframe = practiceIframeRef.current;
           if (iframe && iframe.contentWindow) {
             iframe.contentWindow.postMessage({ type: 'END_PRACTICE' }, '*');
@@ -131,14 +133,18 @@ const App = () => {
     return () => clearInterval(timer);
   }, [gameState, practicePhase]);
 
-  // ── Standing room lobby timer ───────────────────────────────────────────
+  // \u2500\u2500 Standing room lobby timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     if (gameState !== 'standing') return;
     setLobbyTimer(ROUND_START_TIMEOUT);
 
     const timer = setInterval(() => {
       setLobbyTimer(prev => {
-        if (prev <= 1) { clearInterval(timer); startBasketballRound(); return 0; }
+        if (prev <= 1) {
+          clearInterval(timer);
+          startBasketballRound();
+          return 0;
+        }
         return prev - 1;
       });
       setReadyCount(prev =>
@@ -149,14 +155,18 @@ const App = () => {
     return () => clearInterval(timer);
   }, [gameState]);
 
-  // ── Post-round auto-advance ─────────────────────────────────────────────
+  // \u2500\u2500 Post-round auto-advance timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     if (gameState !== 'post_round') return;
     setPostRoundTimer(POST_ROUND_WAIT);
 
     const timer = setInterval(() => {
       setPostRoundTimer(prev => {
-        if (prev <= 1) { clearInterval(timer); proceedToNextRound(); return 0; }
+        if (prev <= 1) {
+          clearInterval(timer);
+          proceedToNextRound();
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
@@ -164,7 +174,7 @@ const App = () => {
     return () => clearInterval(timer);
   }, [gameState]);
 
-  // ── Action handlers ─────────────────────────────────────────────────────
+  // \u2500\u2500 Handlers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
   const handleSelectContest = (amount) => {
     setSelectedBuyIn(amount);
@@ -172,11 +182,11 @@ const App = () => {
   };
 
   const confirmJoin = () => {
-    setBalance(prev => prev - selectedBuyIn);
+    // Don't deduct yet — entry fee is only charged once the tournament starts
     setShowConfirm(false);
-    setWaitingPlayers(1);          // user is player #1
+    setWaitingPlayers(1);
     setPracticePhase('filling');
-    setGameState('practice');      // straight into practice — no waiting screen
+    setGameState('practice');
   };
 
   const endPractice = () => {
@@ -188,10 +198,13 @@ const App = () => {
   };
 
   const exitPracticeEarly = () => {
+    // User bailed out of practice \u2014 show a simple lobby-wait screen
     setGameState('practice_lobby_wait');
   };
 
   const initGame = () => {
+    // Entry fee is charged now — lobby is full and the tournament is starting
+    setBalance(prev => prev - selectedBuyIn);
     const newPlayers = Array.from({ length: INITIAL_PLAYERS }, (_, i) => ({
       id: i + 1,
       name: i === 0 ? "You (User)" : `Baller ${i + 1}`,
@@ -277,9 +290,11 @@ const App = () => {
     const survivors = rankedList.filter(p => !p.isEliminated);
 
     if (currentRound === 4 || survivors.length <= 1) {
-      if (survivors.some(w => w.name.includes("You"))) {
-        setBalance(prev => prev + prizePool / survivors.length);
-      }
+      const [first, second] = rankedList.filter(p => !p.isEliminated);
+      const firstPrize  = prizePool * 0.70;
+      const secondPrize = prizePool * 0.20;
+      if (first?.name.includes("You"))  setBalance(prev => prev + firstPrize);
+      if (second?.name.includes("You")) setBalance(prev => prev + secondPrize);
       setGameState('finished');
     } else {
       setGameState('post_round');
@@ -302,7 +317,7 @@ const App = () => {
     setShowPracticeOver(false);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // \u2500\u2500 Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   return (
     <div className="h-screen bg-[#f8f9fa] text-neutral-900 overflow-hidden font-sans relative flex flex-col items-center justify-center">
 
@@ -321,7 +336,7 @@ const App = () => {
 
       <div className="w-full max-w-4xl h-full flex flex-col justify-center p-4 md:p-6 relative z-10">
 
-        {/* ── SELECTION ──────────────────────────────────────────────────── */}
+        {/* \u2500\u2500 SELECTION \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'selection' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col h-full max-h-[800px]">
             <div className="flex justify-between items-center bg-white/80 backdrop-blur-xl border border-white/50 p-3 rounded-2xl mb-6 shadow-xl shadow-neutral-200/20">
@@ -356,7 +371,7 @@ const App = () => {
                     </div>
                     <div className="text-left">
                       <p className="text-xl font-black text-neutral-800">${amount}</p>
-                      <p className="text-[9px] text-neutral-400 font-black uppercase tracking-widest">Win Up To ${(amount * 10 * (1 - HOUSE_RAKE)).toFixed(0)}</p>
+                      <p className="text-[9px] text-neutral-400 font-black uppercase tracking-widest">1st: ${(amount * 10 * 0.70).toFixed(0)} / 2nd: ${(amount * 10 * 0.20).toFixed(0)}</p>
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-neutral-300 group-hover:text-orange-500 transition-colors" />
@@ -374,12 +389,13 @@ const App = () => {
           </div>
         )}
 
-        {/* ── PRACTICE MODE ──────────────────────────────────────────────── */}
+        {/* \u2500\u2500 PRACTICE MODE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'practice' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col relative z-20">
 
+            {/* Top bar: changes based on phase */}
             {practicePhase === 'filling' ? (
-              /* Lobby still filling */
+              /* \u2500\u2500 Lobby filling bar \u2500\u2500 */
               <div className="shrink-0 mb-2">
                 <div className="bg-white border border-neutral-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-center gap-3">
@@ -392,7 +408,7 @@ const App = () => {
                     </div>
                   </div>
 
-                  {/* Player pip dots + count */}
+                  {/* Player dots + count */}
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="flex items-center gap-1">
                       {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
@@ -400,16 +416,16 @@ const App = () => {
                           key={i}
                           className={`w-2 h-2 rounded-full transition-all duration-500 ${
                             i < waitingPlayers
-                              ? i === 0 ? 'bg-orange-500' : 'bg-emerald-400'
-                              : 'bg-neutral-200'
+                              ? i === 0
+                                ? 'bg-orange-500'          // the user
+                                : 'bg-emerald-400'          // other players
+                              : 'bg-neutral-200'            // empty slot
                           }`}
                         />
                       ))}
                     </div>
-                    <div className="text-right min-w-[40px]">
-                      <p className="text-sm font-black font-mono text-neutral-800 leading-none">
-                        {waitingPlayers}<span className="text-neutral-300">/{INITIAL_PLAYERS}</span>
-                      </p>
+                    <div className="text-right">
+                      <p className="text-sm font-black font-mono text-neutral-800 leading-none">{waitingPlayers}<span className="text-neutral-300">/{INITIAL_PLAYERS}</span></p>
                       <p className="text-[8px] text-neutral-400 font-bold uppercase tracking-widest">Players</p>
                     </div>
                   </div>
@@ -424,7 +440,7 @@ const App = () => {
                 </div>
               </div>
             ) : (
-              /* Lobby full — warning countdown */
+              /* \u2500\u2500 Lobby full \u2014 warning bar \u2500\u2500 */
               <div className="animate-in slide-in-from-top-3 duration-500 shrink-0 mb-2">
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-center gap-3">
@@ -432,21 +448,23 @@ const App = () => {
                       <Clock size={15} className="text-amber-600" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Lobby Full — Practice Ending Soon</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Lobby Full \u2014 Practice Ending Soon</p>
                       <p className="text-[9px] text-amber-500 font-bold uppercase tracking-wide">Warmup score won't count. Get ready for the real game!</p>
                     </div>
                   </div>
 
+                  {/* All 10 dots filled */}
                   <div className="flex items-center gap-3 shrink-0">
-                    {/* All 10 pips filled */}
                     <div className="flex items-center gap-1">
                       {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
                         <div key={i} className={`w-2 h-2 rounded-full ${i === 0 ? 'bg-orange-500' : 'bg-emerald-400'}`} />
                       ))}
                     </div>
-                    <p className="text-2xl font-black font-mono text-amber-600 leading-none">
-                      :{practiceWarningTimer.toString().padStart(2, '0')}
-                    </p>
+                    <div className="text-center">
+                      <p className="text-2xl font-black font-mono text-amber-600 leading-none">
+                        :{practiceWarningTimer.toString().padStart(2, '0')}
+                      </p>
+                    </div>
                   </div>
 
                   <button
@@ -460,8 +478,8 @@ const App = () => {
               </div>
             )}
 
-            {/* iframe header */}
-            <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex items-center justify-between px-4 shrink-0 shadow-sm">
+            {/* Header above iframe */}
+            <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                 <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Practice</span>
@@ -478,7 +496,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── PRACTICE LOBBY WAIT (exited early) ────────────────────────── */}
+        {/* \u2500\u2500 PRACTICE LOBBY WAIT (exited early) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'practice_lobby_wait' && (
           <div className="animate-in fade-in duration-400 flex flex-col items-center justify-center h-full text-center gap-6">
             <div className="w-20 h-20 bg-orange-50 border border-orange-100 rounded-full flex items-center justify-center mb-2">
@@ -486,7 +504,7 @@ const App = () => {
             </div>
             <div>
               <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800 leading-none mb-2">Warming Up Done</h2>
-              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Game starts automatically when lobby is full...</p>
+              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Waiting for the tournament to begin...</p>
             </div>
 
             <div className="bg-white border border-neutral-200 rounded-2xl px-8 py-5 shadow-sm flex flex-col items-center gap-3">
@@ -511,12 +529,12 @@ const App = () => {
             </div>
 
             <button onClick={exitToLobby} className="text-[9px] font-bold uppercase tracking-widest text-neutral-300 hover:text-neutral-500 transition-colors">
-              Exit to Lobby
+              Cancel Entry &amp; Exit
             </button>
           </div>
         )}
 
-        {/* ── PRACTICE OVER INTERSTITIAL ─────────────────────────────────── */}
+        {/* \u2500\u2500 PRACTICE OVER INTERSTITIAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {showPracticeOver && (
           <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-neutral-900/60 animate-in fade-in duration-300">
             <div className="text-center animate-in zoom-in duration-400">
@@ -534,7 +552,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── STANDING ROOM ──────────────────────────────────────────────── */}
+        {/* \u2500\u2500 STANDING ROOM \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'standing' && (
           <div className="animate-in fade-in duration-500 h-full flex flex-col">
             <div className="bg-white/95 backdrop-blur-xl border border-white/50 rounded-[32px] p-6 md:p-10 relative overflow-hidden shadow-2xl flex flex-col flex-grow">
@@ -543,8 +561,8 @@ const App = () => {
               </div>
               <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
                 <div className="text-center md:text-left">
-                  <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-orange-200 mb-3 inline-block">
-                    Round {currentRound} of 4
+                  <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border mb-3 inline-block ${currentRound === 4 ? 'bg-yellow-100 text-yellow-700 border-yellow-300' : 'bg-orange-100 text-orange-600 border-orange-200'}`}>
+                    {currentRound === 4 ? 'Money Round' : `Round ${currentRound} of 4`}
                   </span>
                   <h2 className="text-5xl font-black italic uppercase leading-none mb-1 tracking-tighter text-neutral-800">
                     {isUserEliminated ? "Spectating" : "Fresh Slate"}
@@ -602,13 +620,13 @@ const App = () => {
           </div>
         )}
 
-        {/* ── LIVE GAME FRAME ────────────────────────────────────────────── */}
+        {/* \u2500\u2500 LIVE GAME FRAME \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'playing_game' && (
           <div className="animate-in zoom-in duration-300 h-full flex flex-col relative z-20">
             <div className="bg-white border border-neutral-200 p-2 rounded-t-2xl border-b-0 flex justify-between items-center px-4 shrink-0 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Live Round {currentRound}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">{currentRound === 4 ? 'Money Round' : `Live Round ${currentRound}`}</span>
               </div>
               <button onClick={() => finishShooting()} className="text-[9px] font-black uppercase text-neutral-400 hover:text-orange-500 transition-colors">Skip Round</button>
             </div>
@@ -618,7 +636,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── CUT REVEAL DELAY ───────────────────────────────────────────── */}
+        {/* \u2500\u2500 CUT REVEAL DELAY \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'cut_reveal_delay' && (
           <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center h-full text-center">
             <Loader2 className="animate-spin text-orange-500 mb-6" size={48} />
@@ -627,7 +645,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── POST-ROUND SUMMARY ─────────────────────────────────────────── */}
+        {/* \u2500\u2500 POST-ROUND SUMMARY \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'post_round' && (
           <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-4 h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-center bg-white/95 backdrop-blur-xl p-6 rounded-[32px] border border-white/50 gap-6 shrink-0 shadow-sm">
@@ -649,12 +667,19 @@ const App = () => {
                   <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Resetting In</p>
                   <p className="font-mono font-bold text-2xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
                 </div>
+
                 {!isUserEliminated ? (
-                  <button onClick={proceedToNextRound} className="bg-neutral-900 text-white hover:bg-neutral-800 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-neutral-200 text-xs">
+                  <button
+                    onClick={proceedToNextRound}
+                    className="bg-neutral-900 text-white hover:bg-neutral-800 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-neutral-200 text-xs"
+                  >
                     Continue <ArrowRight size={16} />
                   </button>
                 ) : (
-                  <button onClick={exitToLobby} className="bg-red-500 text-white hover:bg-red-600 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-100 text-xs">
+                  <button
+                    onClick={exitToLobby}
+                    className="bg-red-500 text-white hover:bg-red-600 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-100 text-xs"
+                  >
                     Exit Tournament <LogOut size={16} />
                   </button>
                 )}
@@ -684,7 +709,9 @@ const App = () => {
                         )}
                       </div>
                     </div>
-                    <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">{p.currentRoundScore}</div>
+                    <div className="col-span-3 text-right font-black text-xl font-mono text-orange-500">
+                      {p.currentRoundScore}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -692,7 +719,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── FINISHED ───────────────────────────────────────────────────── */}
+        {/* \u2500\u2500 FINISHED SCREEN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {gameState === 'finished' && (
           <div className="animate-in zoom-in duration-500 space-y-4 h-full flex flex-col">
             <div className="bg-white/95 border-2 border-orange-200 rounded-[32px] p-8 text-center shadow-2xl overflow-hidden relative shrink-0">
@@ -710,17 +737,31 @@ const App = () => {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
-                <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
-                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Final Prize</p>
-                  <p className="text-2xl font-black font-mono text-emerald-600">${prizePool.toFixed(0)}</p>
-                </div>
-                <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
-                  <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">Winning Round Score</p>
-                  <p className="text-2xl font-black font-mono text-orange-500">{players.find(p => !p.isEliminated)?.currentRoundScore || 0}</p>
-                </div>
-              </div>
-              <button onClick={exitToLobby} className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs relative z-10">
+              {(() => {
+                const finalists = [...players].filter(p => !p.isEliminated);
+                const first  = finalists[0];
+                const second = finalists[1] ?? [...players].sort((a, b) => b.totalPoints - a.totalPoints)[1];
+                const firstPrize  = (prizePool * 0.70).toFixed(0);
+                const secondPrize = (prizePool * 0.20).toFixed(0);
+                return (
+                  <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto mb-6">
+                    <div className="bg-yellow-50 border border-yellow-200 px-4 py-3 rounded-2xl text-center shadow-inner">
+                      <p className="text-[8px] text-yellow-600 uppercase font-black mb-0.5">1st Place</p>
+                      <p className="text-2xl font-black font-mono text-emerald-600">${firstPrize}</p>
+                      <p className="text-[9px] text-neutral-400 font-bold truncate mt-0.5">{first?.name}</p>
+                    </div>
+                    <div className="bg-neutral-50/80 border border-neutral-100 px-4 py-3 rounded-2xl text-center shadow-inner">
+                      <p className="text-[8px] text-neutral-400 uppercase font-black mb-0.5">2nd Place</p>
+                      <p className="text-2xl font-black font-mono text-neutral-600">${secondPrize}</p>
+                      <p className="text-[9px] text-neutral-400 font-bold truncate mt-0.5">{second?.name}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+              <button
+                onClick={exitToLobby}
+                className="w-full max-w-xs bg-neutral-900 hover:bg-neutral-800 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-neutral-200 active:scale-95 mx-auto text-xs relative z-10"
+              >
                 Return to Lobby
               </button>
             </div>
@@ -751,7 +792,9 @@ const App = () => {
                     </div>
                     <div className="col-span-3 text-center">
                       {!p.isEliminated ? (
-                        <span className="text-[8px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-black uppercase tracking-widest border border-emerald-200">Champ</span>
+                        idx === 0
+                          ? <span className="text-[8px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-black uppercase tracking-widest border border-yellow-300">Champ</span>
+                          : <span className="text-[8px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full font-black uppercase tracking-widest border border-neutral-200">2nd</span>
                       ) : (
                         <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-widest">Out R{p.eliminatedAt}</span>
                       )}
@@ -764,7 +807,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ── CONFIRM MODAL ──────────────────────────────────────────────── */}
+        {/* \u2500\u2500 CONFIRM MODAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {showConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-white/40 animate-in fade-in duration-200">
             <div className="bg-white border border-neutral-200 w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
@@ -775,20 +818,26 @@ const App = () => {
                 </div>
               </div>
               <h3 className="text-3xl font-black uppercase italic mb-2 text-center leading-tight text-neutral-800 relative z-10">Join for ${selectedBuyIn}?</h3>
-              <p className="text-center text-neutral-400 text-xs font-bold uppercase tracking-widest mb-2 relative z-10">Current Balance: ${balance.toFixed(2)}</p>
+              <p className="text-center text-neutral-400 text-xs font-bold uppercase tracking-widest mb-2 relative z-10">Balance after entry: ${(balance - selectedBuyIn).toFixed(2)}</p>
 
               <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 mb-6 flex items-start gap-3 relative z-10">
                 <Dumbbell size={14} className="text-blue-500 mt-0.5 shrink-0" />
                 <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wide leading-relaxed">
-                  Practice starts immediately after you confirm. Warm up your shot while the lobby fills!
+                  Practice mode starts immediately while your lobby fills up. Warm up your shot before the real game!
                 </p>
               </div>
 
               <div className="space-y-3 relative z-10">
-                <button onClick={confirmJoin} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-100 active:scale-95 transition-all">
+                <button
+                  onClick={confirmJoin}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-100 active:scale-95 transition-all"
+                >
                   Confirm Entry
                 </button>
-                <button onClick={() => setShowConfirm(false)} className="w-full bg-neutral-100 hover:bg-neutral-200 py-4 rounded-2xl font-black uppercase tracking-widest text-xs text-neutral-500">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="w-full bg-neutral-100 hover:bg-neutral-200 py-4 rounded-2xl font-black uppercase tracking-widest text-xs text-neutral-500"
+                >
                   Cancel
                 </button>
               </div>
