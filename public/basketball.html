@@ -591,8 +591,10 @@
 
         function animate(timestamp) {
             requestAnimationFrame(animate);
-            const _dt = _lastFrameTime ? Math.min((timestamp - _lastFrameTime) / 16.667, 3) : 1;
+            const _rawDt = _lastFrameTime ? Math.min((timestamp - _lastFrameTime) / 16.667, 3) : 1;
             _lastFrameTime = timestamp;
+            const _substeps = Math.ceil(_rawDt);
+            const _dt = _rawDt / _substeps;
             if (projectionMarker?.visible) {
                 const pulse = 1 + Math.sin(Date.now() * 0.015) * 0.25;
                 projectionMarker.scale.set(pulse, pulse, pulse);
@@ -611,6 +613,7 @@
             }
             if (heldBall && isPullingBack) updateTrajectoryGuide(heldBall.position, calculateVelocityFromPull(heldBall.position, getMouseIn3DSpace(heldBall.position.z)).multiplyScalar(LAUNCH_POWER));
             
+            for (let _step = 0; _step < _substeps; _step++) {
             // PHYSICS LOOP FOR ACTIVE SHOTS
             for (let i = activeShots.length - 1; i >= 0; i--) {
                 const shot = activeShots[i], ball = shot.ball, vel = shot.velocity;
@@ -715,6 +718,7 @@
                 const deltaPos = new THREE.Vector3().subVectors(ball.position, lastPos);
                 if (deltaPos.length() > 0) { ball.rotation.z -= deltaPos.x / BALL_RADIUS; ball.rotation.x += deltaPos.z / BALL_RADIUS; }
             });
+            } // end substep loop
             renderer.render(scene, camera);
         }
 
