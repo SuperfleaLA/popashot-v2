@@ -98,7 +98,7 @@
         
         const NET_FRICTION = 0.94; 
         const SPIN_FRICTION_FACTOR = 0.008; 
-        const GLOBAL_SPEED_MULTIPLIER = 0.95;
+        const GLOBAL_SPEED_MULTIPLIER = 1.05;
         const LAUNCH_POWER = 0.5; // controls pull sensitivity, independent of physics speed
         const RIM_RADIUS = 0.48; 
         const RIM_THICKNESS = 0.045;
@@ -620,11 +620,12 @@
                     if (Math.abs(vel.y) > 0.01) {
                         ball.position.y = floorY + 0.01;
                         vel.y *= -FLOOR_BOUNCE_MULT;
-                        vel.z = Math.max(0.04, vel.z + (Math.abs(vel.y) * 0.2));
+                        vel.z = vel.z + (Math.abs(vel.y) * 0.1);
                         vel.x += (Math.random() - 0.5) * 0.025; 
                     } else {
                         ball.position.y = floorY; 
-                        ball.userData.velocity.set(vel.x, 0, Math.max(0.04, vel.z));
+                        ball.position.x = THREE.MathUtils.clamp(ball.position.x, WALL_LEFT + BALL_RADIUS + 0.1, WALL_RIGHT - BALL_RADIUS - 0.1);
+                        ball.userData.velocity.set(vel.x, 0, vel.z);
                         ball.userData.spin = 0; 
                         balls.push(ball); 
                         activeShots.splice(i, 1);
@@ -639,8 +640,17 @@
                     vel.y += (ball.userData.inNet ? GRAVITY * 0.4 : GRAVITY) * GLOBAL_SPEED_MULTIPLIER * _dt;
                     if (!ball.userData.inNet) { ball.rotation.x += ball.userData.spin * _dt; ball.userData.spin *= Math.pow(0.995, _dt); }
                     handleCollisions(shot);
+                    // Front bar collision — only triggers on meaningful forward motion to prevent oscillation
+                    const BAR_Z = RACK_FRONT_Z - BALL_RADIUS;
+                    const BAR_TOP = 1.35 + 0.15 + BALL_RADIUS;
+                    if (vel.z > 0.01 && ball.position.z >= BAR_Z && ball.position.y <= BAR_TOP) {
+                        ball.position.z = BAR_Z - 0.001;
+                        vel.z = -vel.z * 0.3;
+                        vel.x *= 0.5;
+                        vel.y *= 0.5;
+                    }
                     if (ball.position.y < -1) {
-                        ball.position.set(0, getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
+                        ball.position.set(THREE.MathUtils.clamp(ball.position.x, WALL_LEFT + BALL_RADIUS + 0.1, WALL_RIGHT - BALL_RADIUS - 0.1), getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
                         ball.userData.velocity.set(0,0,0); ball.userData.hasScored = false;
                         balls.push(ball); activeShots.splice(i, 1);
                         
@@ -670,16 +680,23 @@
                 }
 
                 if (ball.position.z < RACK_FRONT_LIMIT) {
-                    vel.z = (vel.z + 0.001 * _dt) * Math.pow(0.97, _dt); vel.x *= Math.pow(0.96, _dt);
+                    // Only nudge forward if not already pressed against the bar
+                    const distToBar = RACK_FRONT_LIMIT - ball.position.z;
+                    if (distToBar > BALL_RADIUS * 0.5) {
+                        vel.z = (vel.z + 0.001 * _dt) * Math.pow(0.97, _dt);
+                    } else {
+                        vel.z = Math.min(vel.z * Math.pow(0.97, _dt), 0); // damp to zero, never push forward
+                    }
+                    vel.x *= Math.pow(0.96, _dt);
                 } else {
-                    ball.position.z = RACK_FRONT_LIMIT; vel.z *= Math.pow(0.1, _dt); vel.x *= Math.pow(0.8, _dt);
+                    ball.position.z = RACK_FRONT_LIMIT; vel.z = Math.min(vel.z * Math.pow(0.1, _dt), 0); vel.x *= Math.pow(0.8, _dt);
                 }
                 
                 ball.position.addScaledVector(vel, _dt);
                 
                 const ROLLING_WALL_DAMP = 0.5;
-                if (ball.position.x < WALL_LEFT + 0.15) { ball.position.x = WALL_LEFT + 0.15; vel.x *= -ROLLING_WALL_DAMP; }
-                if (ball.position.x > WALL_RIGHT - 0.15) { ball.position.x = WALL_RIGHT - 0.15; vel.x *= -ROLLING_WALL_DAMP; }
+                if (ball.position.x < WALL_LEFT + BALL_RADIUS) { ball.position.x = WALL_LEFT + BALL_RADIUS; vel.x *= -ROLLING_WALL_DAMP; }
+                if (ball.position.x > WALL_RIGHT - BALL_RADIUS) { ball.position.x = WALL_RIGHT - BALL_RADIUS; vel.x *= -ROLLING_WALL_DAMP; }
 
                 handleBallBallCollisions(ball, idx, balls);
                 if (ball.position.z > RACK_FRONT_LIMIT) ball.position.z = RACK_FRONT_LIMIT;
