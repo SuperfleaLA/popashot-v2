@@ -643,14 +643,14 @@
                     vel.y += (ball.userData.inNet ? GRAVITY * 0.4 : GRAVITY) * GLOBAL_SPEED_MULTIPLIER * _dt;
                     if (!ball.userData.inNet) { ball.rotation.x += ball.userData.spin * _dt; ball.userData.spin *= Math.pow(0.995, _dt); }
                     handleCollisions(shot);
-                    // Front bar collision — only triggers on meaningful forward motion to prevent oscillation
-                    const BAR_Z = RACK_FRONT_Z - BALL_RADIUS;
-                    const BAR_TOP = 1.35 + 0.15 + BALL_RADIUS;
-                    if (vel.z > 0.01 && ball.position.z >= BAR_Z && ball.position.y <= BAR_TOP) {
-                        ball.position.z = BAR_Z - 0.001;
-                        vel.z = -vel.z * 0.3;
-                        vel.x *= 0.5;
-                        vel.y *= 0.5;
+                    // Bar/ramp boundary — same limit as passive balls, no dead zone
+                    if (ball.position.z >= RACK_FRONT_LIMIT) {
+                        ball.position.z = RACK_FRONT_LIMIT - 0.001;
+                        if (vel.z > 0) {
+                            vel.z = -vel.z * 0.3;
+                            vel.x *= 0.5;
+                            vel.y *= 0.5;
+                        }
                     }
                     if (ball.position.y < -1) {
                         ball.position.set(THREE.MathUtils.clamp(ball.position.x, WALL_LEFT + BALL_RADIUS + 0.1, WALL_RIGHT - BALL_RADIUS - 0.1), getFloorY(RACK_FRONT_LIMIT), RACK_FRONT_LIMIT);
