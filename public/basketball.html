@@ -679,27 +679,33 @@
                     }
                 }
 
-                if (ball.position.z < RACK_FRONT_LIMIT) {
-                    // Only nudge forward if not already pressed against the bar
+                // Apply damping based on current position
+                if (ball.position.z <= RACK_FRONT_LIMIT) {
                     const distToBar = RACK_FRONT_LIMIT - ball.position.z;
                     if (distToBar > BALL_RADIUS * 0.5) {
                         vel.z = (vel.z + 0.001 * _dt) * Math.pow(0.97, _dt);
                     } else {
-                        vel.z = Math.min(vel.z * Math.pow(0.97, _dt), 0); // damp to zero, never push forward
+                        vel.z = Math.min(vel.z * Math.pow(0.97, _dt), 0);
                     }
                     vel.x *= Math.pow(0.96, _dt);
                 } else {
-                    ball.position.z = RACK_FRONT_LIMIT; vel.z = Math.min(vel.z * Math.pow(0.1, _dt), 0); vel.x *= Math.pow(0.8, _dt);
+                    vel.z = Math.min(vel.z * Math.pow(0.1, _dt), 0); vel.x *= Math.pow(0.8, _dt);
                 }
-                
+
                 ball.position.addScaledVector(vel, _dt);
-                
+
+                // Swept bar boundary — catches tunnelling regardless of frame step size
+                if (ball.position.z > RACK_FRONT_LIMIT) {
+                    ball.position.z = RACK_FRONT_LIMIT;
+                    vel.z = 0;
+                    vel.x *= 0.5;
+                }
+
                 const ROLLING_WALL_DAMP = 0.5;
                 if (ball.position.x < WALL_LEFT + BALL_RADIUS) { ball.position.x = WALL_LEFT + BALL_RADIUS; vel.x *= -ROLLING_WALL_DAMP; }
                 if (ball.position.x > WALL_RIGHT - BALL_RADIUS) { ball.position.x = WALL_RIGHT - BALL_RADIUS; vel.x *= -ROLLING_WALL_DAMP; }
 
                 handleBallBallCollisions(ball, idx, balls);
-                if (ball.position.z > RACK_FRONT_LIMIT) ball.position.z = RACK_FRONT_LIMIT;
                 
                 const currentFloorY = getFloorY(ball.position.z);
                 if (ball.position.y < currentFloorY && Math.abs(vel.y) < 0.001) {
