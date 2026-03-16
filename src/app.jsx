@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './auth/AuthProvider';
+import { saveGame, getGames } from './services/gameService';
 import {
   Trophy,
   Users,
@@ -77,6 +78,9 @@ const App = () => {
 
   // \u2500\u2500 Lobby fill: 1 new player every 3 seconds while in practice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const practiceIframeRef = React.useRef(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [matchHistory, setMatchHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Lobby fill: +1 player every 3s
   // Runs during practice (filling) AND practice_lobby_wait so the dots
@@ -209,7 +213,7 @@ const App = () => {
     setBalance(prev => prev - selectedBuyIn);
     const newPlayers = Array.from({ length: INITIAL_PLAYERS }, (_, i) => ({
       id: i + 1,
-      name: i === 0 ? "You (User)" : `Baller ${i + 1}`,
+      name: i === 0 ? `${user?.username || 'You'} (You)` : `Baller ${i + 1}`,
       points: [],
       totalPoints: 0,
       currentRoundScore: 0,
@@ -241,7 +245,7 @@ const App = () => {
       const updatedPlayers = currentPlayers.map(p => {
         if (p.isEliminated) return p;
         const roundPoints =
-          p.name === "You (User)" && userScore !== null
+          p.name.includes("(You)") && userScore !== null
             ? userScore
             : Math.floor(Math.random() * 15) + 5;
         const newPointsHistory = [...p.points, roundPoints];
@@ -297,6 +301,23 @@ const App = () => {
       const secondPrize = prizePool * 0.20;
       if (first?.name.includes("You"))  setBalance(prev => prev + firstPrize);
       if (second?.name.includes("You")) setBalance(prev => prev + secondPrize);
+
+      // ── Determine user placement and winnings ─────────────
+      const userPlayer = rankedList.find(p => p.name.includes("(You)"));
+      const isFirst  = first?.name.includes("(You)");
+      const isSecond = second?.name.includes("(You)");
+      const placement = isFirst ? 1 : isSecond ? 2 : userPlayer?.eliminatedAt ? (userPlayer.eliminatedAt + 2) : 10;
+      const winnings  = isFirst ? firstPrize : isSecond ? secondPrize : 0;
+
+      saveGame({
+        userId: user?.userId,
+        username: user?.username,
+        entryFee: selectedBuyIn || 0,
+        placement,
+        roundScores: userPlayer?.points || [],
+        winnings,
+      });
+
       setGameState('finished');
     } else {
       setGameState('post_round');
@@ -309,6 +330,14 @@ const App = () => {
     setReadyCount(0);
     setUserReady(false);
     setGameState('standing');
+  };
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    const games = await getGames(user?.userId);
+    setMatchHistory(games);
+    setHistoryLoading(false);
+    setShowHistory(true);
   };
 
   const exitToLobby = () => {
@@ -360,6 +389,14 @@ const App = () => {
                 >
                   <LogOut size={14} />
                   <span className="text-xs font-black uppercase tracking-widest hidden sm:inline">{user?.username}</span>
+                </button>
+                <button
+                  onClick={fetchHistory}
+                  title="Match History"
+                  className="flex items-center gap-1.5 bg-neutral-100 hover:bg-orange-50 hover:text-orange-500 text-neutral-400 border border-neutral-200 hover:border-orange-200 px-3 py-1.5 rounded-xl transition-colors"
+                >
+                  <Clock size={14} />
+                  <span className="text-xs font-black uppercase tracking-widest hidden sm:inline">History</span>
                 </button>
               </div>
             </div>
@@ -819,7 +856,84 @@ const App = () => {
           </div>
         )}
 
-        {/* \u2500\u2500 CONFIRM MODAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+        {/* ── MATCH HISTORY MODAL ─────────────────────────────────────────────── */}
+        {showHistory && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-white/40 animate-in fade-in duration-200">
+            <div className="bg-white border border-neutral-200 w-full max-w-lg rounded-[32px] p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between mb-5 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500 border border-orange-100">
+                    <Clock size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black uppercase italic tracking-tighter text-neutral-900">Match History</h2>
+                    <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest">{user?.username}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowHistory(false)} className="text-neutral-400 hover:text-neutral-700 font-black text-lg transition-colors">✕</button>
+              </div>
+
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                </div>
+              ) : matchHistory.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-neutral-400">
+                  <Trophy size={40} className="mb-3 opacity-20" />
+                  <p className="font-black uppercase tracking-widest text-sm">No games yet</p>
+                  <p className="text-xs mt-1">Play your first tournament to see history here</p>
+                </div>
+              ) : (
+                <div className="overflow-y-auto flex-grow custom-scrollbar space-y-3 pr-1">
+                  {matchHistory.map((game) => {
+                    const isWin = game.placement === 1;
+                    const isSecond = game.placement === 2;
+                    const date = new Date(game.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    const placementLabel = game.placement === 1 ? '🥇 Champion' : game.placement === 2 ? '🥈 2nd Place' : `Eliminated R${game.placement - 2}`;
+                    return (
+                      <div key={game.gameId} className={`border rounded-2xl p-4 ${isWin ? 'bg-yellow-50 border-yellow-200' : isSecond ? 'bg-neutral-50 border-neutral-200' : 'bg-white border-neutral-100'}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className={`text-xs font-black uppercase tracking-widest ${isWin ? 'text-yellow-600' : isSecond ? 'text-neutral-600' : 'text-neutral-400'}`}>
+                            {placementLabel}
+                          </span>
+                          <span className="text-[10px] text-neutral-400 font-bold">{date}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          <div className="text-center bg-white/80 rounded-xl p-2 border border-neutral-100">
+                            <p className="text-[8px] text-neutral-400 font-black uppercase tracking-widest mb-0.5">Entry</p>
+                            <p className="text-sm font-black font-mono text-neutral-700">${game.entryFee}</p>
+                          </div>
+                          <div className="text-center bg-white/80 rounded-xl p-2 border border-neutral-100">
+                            <p className="text-[8px] text-neutral-400 font-black uppercase tracking-widest mb-0.5">Winnings</p>
+                            <p className={`text-sm font-black font-mono ${game.winnings > 0 ? 'text-emerald-600' : 'text-neutral-400'}`}>${game.winnings.toFixed(0)}</p>
+                          </div>
+                          <div className="text-center bg-white/80 rounded-xl p-2 border border-neutral-100">
+                            <p className="text-[8px] text-neutral-400 font-black uppercase tracking-widest mb-0.5">Net</p>
+                            <p className={`text-sm font-black font-mono ${game.winnings - game.entryFee >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {game.winnings - game.entryFee >= 0 ? '+' : ''}${(game.winnings - game.entryFee).toFixed(0)}
+                            </p>
+                          </div>
+                        </div>
+                        {game.roundScores?.length > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[8px] text-neutral-400 font-black uppercase tracking-widest shrink-0">Rounds:</p>
+                            {game.roundScores.map((s, i) => (
+                              <span key={i} className="text-[9px] font-black font-mono bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded-md">
+                                R{i + 1}: {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── CONFIRM MODAL ──────────────────────────────────────────────────────── */}
         {showConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-white/40 animate-in fade-in duration-200">
             <div className="bg-white border border-neutral-200 w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
