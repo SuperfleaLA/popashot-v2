@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from './auth/AuthProvider';
 import {
   Trophy,
   Users,
@@ -30,6 +31,7 @@ const LOBBY_FILL_INTERVAL = 2000; // 1 new player every 2 seconds
 const PRACTICE_WARNING_DURATION = 30; // seconds after lobby full before practice ends
 
 const App = () => {
+  const { user, signOut } = useAuth();
   const [balance, setBalance] = useState(1000.00);
   const [gameState, setGameState] = useState('selection');
   const [selectedBuyIn, setSelectedBuyIn] = useState(null);
@@ -346,9 +348,19 @@ const App = () => {
                 </div>
                 <h1 className="text-xl font-black italic uppercase tracking-tighter text-neutral-800">Hoops Eliminator</h1>
               </div>
-              <div className="flex items-center gap-2 pr-2 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100">
-                <Wallet size={14} className="text-emerald-600" />
-                <p className="text-lg font-black font-mono text-emerald-700">${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pr-2 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100">
+                  <Wallet size={14} className="text-emerald-600" />
+                  <p className="text-lg font-black font-mono text-emerald-700">${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+                <button
+                  onClick={signOut}
+                  title={`Sign out (${user?.username})`}
+                  className="flex items-center gap-1.5 bg-neutral-100 hover:bg-red-50 hover:text-red-500 text-neutral-400 border border-neutral-200 hover:border-red-200 px-3 py-1.5 rounded-xl transition-colors"
+                >
+                  <LogOut size={14} />
+                  <span className="text-xs font-black uppercase tracking-widest hidden sm:inline">{user?.username}</span>
+                </button>
               </div>
             </div>
 
