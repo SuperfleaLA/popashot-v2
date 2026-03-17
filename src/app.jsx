@@ -294,6 +294,20 @@ const App = () => {
 
     setPlayers(rankedList);
     const survivors = rankedList.filter(p => !p.isEliminated);
+    const userPlayer = rankedList.find(p => p.name.includes("(You)"));
+
+    // ── If user just got eliminated this round, save immediately ──
+    const userJustEliminated = userPlayer?.isEliminated && userPlayer?.eliminatedAt === currentRound;
+    if (userJustEliminated) {
+      saveGame({
+        userId: user?.userId,
+        username: user?.username,
+        entryFee: selectedBuyIn || 0,
+        placement: currentRound + 2, // R1 out = 3rd-10th, R2 = 5th-10th, etc.
+        roundScores: userPlayer?.points || [],
+        winnings: 0,
+      });
+    }
 
     if (currentRound === 4 || survivors.length <= 1) {
       const [first, second] = rankedList.filter(p => !p.isEliminated);
@@ -302,21 +316,22 @@ const App = () => {
       if (first?.name.includes("You"))  setBalance(prev => prev + firstPrize);
       if (second?.name.includes("You")) setBalance(prev => prev + secondPrize);
 
-      // ── Determine user placement and winnings ─────────────
-      const userPlayer = rankedList.find(p => p.name.includes("(You)"));
-      const isFirst  = first?.name.includes("(You)");
-      const isSecond = second?.name.includes("(You)");
-      const placement = isFirst ? 1 : isSecond ? 2 : userPlayer?.eliminatedAt ? (userPlayer.eliminatedAt + 2) : 10;
-      const winnings  = isFirst ? firstPrize : isSecond ? secondPrize : 0;
+      // ── Save for finalists (only if not already saved as eliminated) ──
+      if (!userJustEliminated) {
+        const isFirst  = first?.name.includes("(You)");
+        const isSecond = second?.name.includes("(You)");
+        const placement = isFirst ? 1 : isSecond ? 2 : 10;
+        const winnings  = isFirst ? firstPrize : isSecond ? secondPrize : 0;
 
-      saveGame({
-        userId: user?.userId,
-        username: user?.username,
-        entryFee: selectedBuyIn || 0,
-        placement,
-        roundScores: userPlayer?.points || [],
-        winnings,
-      });
+        saveGame({
+          userId: user?.userId,
+          username: user?.username,
+          entryFee: selectedBuyIn || 0,
+          placement,
+          roundScores: userPlayer?.points || [],
+          winnings,
+        });
+      }
 
       setGameState('finished');
     } else {
