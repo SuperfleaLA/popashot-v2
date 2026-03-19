@@ -55,6 +55,18 @@ const App = () => {
   const [practicePhase, setPracticePhase] = useState('filling');
   const [practiceWarningTimer, setPracticeWarningTimer] = useState(PRACTICE_WARNING_DURATION);
   const [showPracticeOver, setShowPracticeOver] = useState(false);
+  const [activeLobbyId, setActiveLobbyId] = useState(null);
+
+  // Keep ref in sync so closures always have the latest value
+  useEffect(() => {
+    activeLobbyIdRef.current = activeLobbyId;
+  }, [activeLobbyId]);
+  const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  const [waitingForScores, setWaitingForScores] = useState(false);
+  const [scoresSubmittedCount, setScoresSubmittedCount] = useState(0);
+  const [roundStartingAt, setRoundStartingAt] = useState(null); // null = waiting, timestamp = counting down
+  const scoreTimeoutRef = React.useRef(null);
+  const activeLobbyIdRef = React.useRef(null);
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
@@ -69,52 +81,135 @@ const App = () => {
         finishShooting(event.data.score);
       }
       if (event.data.type === 'PRACTICE_COMPLETE') {
-        // "Go to Game" clicked inside the practice iframe
-        exitPracticeEarly();
+        // Timer ran out in iframe — iframe already showed modal, skip interstitial
+        endPractice(true);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [players, currentRound, gameState]);
+  }, [players, currentRound, gameState, activeLobbyId]);
 
   // \u2500\u2500 Lobby fill: 1 new player every 3 seconds while in practice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const practiceIframeRef = React.useRef(null);
+  const hasJoinedLobbyRef = React.useRef(false);
   const [showHistory, setShowHistory] = useState(false);
   const [matchHistory, setMatchHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // ── Real-time lobby via WebSocket ──────────────────────────
-  // Connects when user enters practice, disconnects on exit
   useEffect(() => {
     const isInLobby =
       (gameState === 'practice' && practicePhase === 'filling') ||
-      gameState === 'practice_lobby_wait';
+      gameState === 'practice_lobby_wait' ||
+      gameState === 'practice_done' ||
+      gameState === 'standing' ||
+      gameState === 'playing_game' ||
+      gameState === 'cut_reveal_delay' ||
+      gameState === 'post_round';
 
     if (!isInLobby) return;
 
     const handleMessage = (data) => {
       switch (data.type) {
         case 'JOINED_LOBBY':
+          setActiveLobbyId(data.lobbyId);
+          setWaitingPlayers(data.playerCount);
+          break;
+
         case 'PLAYER_JOINED':
         case 'PLAYER_LEFT':
           setWaitingPlayers(data.playerCount);
-          if (data.playerCount >= INITIAL_PLAYERS) {
-            if (gameState === 'practice') {
-              setPracticePhase('warning');
-              setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
-            }
-          }
           break;
 
         case 'LOBBY_READY':
           setWaitingPlayers(INITIAL_PLAYERS);
+          // Trigger warning phase so practice ends and readyToPlay is sent
           if (gameState === 'practice') {
             setPracticePhase('warning');
             setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
-          } else if (gameState === 'practice_lobby_wait') {
-            initGame();
           }
           break;
+
+        case 'PLAYER_READY':
+          setReadyCount(data.readyCount);
+          break;
+
+        case 'ROUND_START': {
+          setCurrentRound(data.roundNumber);
+          setScoreSubmitted(false);
+          setWaitingForScores(false);
+          setScoresSubmittedCount(0);
+          setReadyCount(0);
+
+          // Build player list from server data
+          setPlayers(data.players.map((p, i) => ({
+            id: i + 1,
+            name: p.userId === user?.userId ? `${p.username} (You)` : p.username,
+            userId: p.userId,
+            points: [],
+            totalPoints: 0,
+            currentRoundScore: 0,
+            isEliminated: false,
+            eliminatedAt: null,
+          })));
+
+          // Set score submission timeout
+          if (scoreTimeoutRef.current) clearTimeout(scoreTimeoutRef.current);
+          const scoreDeadline = new Date(data.scoreDeadline).getTime();
+          const timeUntilDeadline = scoreDeadline - Date.now();
+          scoreTimeoutRef.current = setTimeout(() => {
+            setScoreSubmitted(prev => {
+              if (!prev) {
+                lobbyService.requestResults({
+                  lobbyId: data.lobbyId,
+                  roundNumber: data.roundNumber,
+                });
+              }
+              return prev;
+            });
+          }, timeUntilDeadline);
+
+          // Store the startAt timestamp — standing screen will count down to it
+          setRoundStartingAt(data.startAt);
+          setGameState('standing');
+          break;
+        }
+
+        case 'SCORE_SUBMITTED':
+          setScoresSubmittedCount(data.submittedCount);
+          break;
+
+        case 'ROUND_RESULTS': {
+          if (scoreTimeoutRef.current) clearTimeout(scoreTimeoutRef.current);
+          setWaitingForScores(false);
+
+          // Update players with server results
+          setPlayers(data.ranked.map((p, i) => ({
+            id: i + 1,
+            name: p.userId === user?.userId ? `${p.username} (You)` : p.username,
+            userId: p.userId,
+            points: [...(p.points || []), p.roundScore],
+            totalPoints: p.totalPoints,
+            currentRoundScore: p.roundScore,
+            isEliminated: p.isEliminated,
+            eliminatedAt: p.eliminatedAt,
+          })));
+
+          // Award winnings if game over
+          if (data.isGameOver) {
+            const userResult = data.ranked.find(p => p.userId === user?.userId);
+            const prizePoolAmount = INITIAL_PLAYERS * (selectedBuyIn || 0);
+            if (data.ranked[0]?.userId === user?.userId) {
+              setBalance(prev => prev + prizePoolAmount * 0.70);
+            } else if (data.ranked[1]?.userId === user?.userId) {
+              setBalance(prev => prev + prizePoolAmount * 0.20);
+            }
+            setGameState('finished');
+          } else {
+            setGameState('post_round');
+          }
+          break;
+        }
 
         case 'LOBBY_FULL':
           console.warn('Lobby full:', data.message);
@@ -125,13 +220,16 @@ const App = () => {
       }
     };
 
-    // Connect and join lobby
+    // Connect and join lobby — only once per session
     lobbyService.connect(handleMessage).then(() => {
-      lobbyService.joinLobby({
-        userId: user?.userId,
-        username: user?.username,
-        entryFee: selectedBuyIn,
-      });
+      if (!hasJoinedLobbyRef.current) {
+        hasJoinedLobbyRef.current = true;
+        lobbyService.joinLobby({
+          userId: user?.userId,
+          username: user?.username,
+          entryFee: selectedBuyIn,
+        });
+      }
     }).catch(err => {
       console.error('WebSocket connection failed:', err);
       // Fall back to simulated fill if WebSocket fails
@@ -153,8 +251,8 @@ const App = () => {
     });
 
     return () => {
-      lobbyService.leaveLobby({ entryFee: selectedBuyIn });
-      lobbyService.disconnect();
+      // Don't disconnect on StrictMode remount — only on true unmount
+      // exitToLobby handles intentional disconnect
     };
   }, [gameState, practicePhase]);
 
@@ -173,10 +271,15 @@ const App = () => {
       setPracticeWarningTimer(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Tell the iframe to show its modal + 5s auto-advance countdown
-          const iframe = practiceIframeRef.current;
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({ type: 'END_PRACTICE' }, '*');
+          if (activeLobbyIdRef.current) {
+            // Multiplayer — skip iframe modal, go straight to practice_done
+            endPractice(true);
+          } else {
+            // Single player — tell iframe to show its modal + 5s countdown
+            const iframe = practiceIframeRef.current;
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage({ type: 'END_PRACTICE' }, '*');
+            }
           }
           return 0;
         }
@@ -187,11 +290,27 @@ const App = () => {
     return () => clearInterval(timer);
   }, [gameState, practicePhase]);
 
-  // \u2500\u2500 Standing room lobby timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── Standing room lobby timer ───────────────────────────────
   useEffect(() => {
     if (gameState !== 'standing') return;
-    setLobbyTimer(ROUND_START_TIMEOUT);
 
+    if (activeLobbyId && roundStartingAt) {
+      // Multiplayer — count down to exact server timestamp
+      const tick = () => {
+        const msLeft = Math.max(0, new Date(roundStartingAt).getTime() - Date.now());
+        const secsLeft = Math.ceil(msLeft / 1000);
+        setLobbyTimer(secsLeft);
+        if (msLeft <= 0) {
+          startBasketballRound();
+        }
+      };
+      tick(); // immediate first tick
+      const timer = setInterval(tick, 500); // 500ms for smooth display
+      return () => clearInterval(timer);
+    }
+
+    // Single player — 30s countdown with simulated ready count
+    setLobbyTimer(ROUND_START_TIMEOUT);
     const timer = setInterval(() => {
       setLobbyTimer(prev => {
         if (prev <= 1) {
@@ -205,9 +324,8 @@ const App = () => {
         prev < INITIAL_PLAYERS - 1 && Math.random() > 0.7 ? prev + 1 : prev
       );
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [gameState]);
+  }, [gameState, roundStartingAt]);
 
   // \u2500\u2500 Post-round auto-advance timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
@@ -243,17 +361,38 @@ const App = () => {
     setGameState('practice');
   };
 
-  const endPractice = () => {
-    setShowPracticeOver(true);
-    setTimeout(() => {
-      setShowPracticeOver(false);
-      initGame();
-    }, 2500);
+  const endPractice = (skipInterstitial = false) => {
+    const proceed = () => {
+      const lobbyId = activeLobbyIdRef.current;
+      if (lobbyId) {
+        setRoundStartingAt(null);
+        setGameState('practice_done');
+        lobbyService.readyToPlay({ lobbyId });
+      } else {
+        initGame();
+      }
+    };
+
+    if (skipInterstitial) {
+      proceed();
+    } else {
+      setShowPracticeOver(true);
+      setTimeout(() => {
+        setShowPracticeOver(false);
+        proceed();
+      }, 2500);
+    }
   };
 
   const exitPracticeEarly = () => {
-    // User bailed out of practice \u2014 show a simple lobby-wait screen
-    setGameState('practice_lobby_wait');
+    const lobbyId = activeLobbyIdRef.current;
+    if (lobbyId) {
+      setRoundStartingAt(null);
+      setGameState('practice_done');
+      lobbyService.readyToPlay({ lobbyId });
+    } else {
+      setGameState('practice_lobby_wait');
+    }
   };
 
   const initGame = () => {
@@ -289,6 +428,21 @@ const App = () => {
   };
 
   const finishShooting = (userScore = null) => {
+    // If in a real multiplayer lobby, submit score to server
+    if (activeLobbyId && userScore !== null && !scoreSubmitted) {
+      setScoreSubmitted(true);
+      setWaitingForScores(true);
+      lobbyService.submitScore({
+        lobbyId: activeLobbyId,
+        roundNumber: currentRound,
+        score: userScore,
+        userId: user?.userId,
+      });
+      setGameState('cut_reveal_delay');
+      return; // Server will handle results via ROUND_RESULTS message
+    }
+
+    // Single player / fallback — process locally
     setPlayers(currentPlayers => {
       const updatedPlayers = currentPlayers.map(p => {
         if (p.isEliminated) return p;
@@ -400,11 +554,20 @@ const App = () => {
   };
 
   const exitToLobby = () => {
+    if (activeLobbyId) {
+      lobbyService.leaveLobby({ entryFee: selectedBuyIn });
+      lobbyService.disconnect();
+    }
+    hasJoinedLobbyRef.current = false;
     setGameState('selection');
     setSelectedBuyIn(null);
     setWaitingPlayers(0);
     setPracticePhase('filling');
     setShowPracticeOver(false);
+    setActiveLobbyId(null);
+    setScoreSubmitted(false);
+    setWaitingForScores(false);
+    if (scoreTimeoutRef.current) clearTimeout(scoreTimeoutRef.current);
   };
 
   // \u2500\u2500 Render \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -642,6 +805,42 @@ const App = () => {
           </div>
         )}
 
+        {/* ── PRACTICE DONE — WAITING FOR OTHER PLAYERS ─────────────────────── */}
+        {gameState === 'practice_done' && (
+          <div className="animate-in fade-in duration-400 flex flex-col items-center justify-center h-full text-center gap-6">
+            <div className="w-20 h-20 bg-blue-50 border border-blue-100 rounded-full flex items-center justify-center mb-2">
+              <Loader2 size={36} className="text-blue-400 animate-spin" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800 leading-none mb-2">Practice Complete</h2>
+              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Waiting for other players to finish practice...</p>
+            </div>
+
+            <div className="bg-white border border-neutral-200 rounded-2xl px-8 py-5 shadow-sm flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 text-neutral-400">
+                <Users size={14} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Players Ready</span>
+              </div>
+              <div className="flex gap-1.5">
+                {Array.from({ length: INITIAL_PLAYERS }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                      i < readyCount ? 'bg-emerald-400' : 'bg-neutral-200'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-emerald-600 font-black text-lg font-mono">{readyCount} / {INITIAL_PLAYERS}</p>
+              <p className="text-neutral-300 text-[9px] font-bold uppercase tracking-widest">Exited Practice</p>
+            </div>
+
+            <button onClick={exitToLobby} className="text-[9px] font-bold uppercase tracking-widest text-neutral-300 hover:text-neutral-500 transition-colors">
+              Cancel Entry &amp; Exit
+            </button>
+          </div>
+        )}
+
         {/* \u2500\u2500 PRACTICE OVER INTERSTITIAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {showPracticeOver && (
           <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-neutral-900/60 animate-in fade-in duration-300">
@@ -681,11 +880,16 @@ const App = () => {
                 </div>
                 <div className="flex flex-col items-center gap-3 min-w-[180px]">
                   <div className="text-center">
-                    <p className="text-[9px] text-neutral-400 font-black uppercase tracking-tighter mb-0.5">Tip Off In</p>
+                    <p className="text-[9px] text-neutral-400 font-black uppercase tracking-tighter mb-0.5">
+                      {activeLobbyId ? 'Round Starts In' : 'Tip Off In'}
+                    </p>
                     <p className="text-4xl font-mono font-black text-orange-500">:{lobbyTimer.toString().padStart(2, '0')}</p>
+                    {activeLobbyId && (
+                      <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest mt-1">All players ready!</p>
+                    )}
                   </div>
 
-                  {!isUserEliminated ? (
+                  {!isUserEliminated && !activeLobbyId ? (
                     <button
                       onClick={handleUserReady}
                       disabled={userReady}
@@ -694,7 +898,7 @@ const App = () => {
                       {userReady ? <CheckCircle2 size={20} className="animate-bounce" /> : <Play size={20} />}
                       {userReady ? 'Locked In' : 'Enter Round'}
                     </button>
-                  ) : (
+                  ) : isUserEliminated ? (
                     <button
                       onClick={exitToLobby}
                       className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-500 py-4 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 border border-neutral-200"
@@ -702,7 +906,7 @@ const App = () => {
                       <LogOut size={18} />
                       Exit Game
                     </button>
-                  )}
+                  ) : null}
 
                   <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest">{readyCount}/10 Players Ready</p>
                 </div>
@@ -748,8 +952,21 @@ const App = () => {
         {gameState === 'cut_reveal_delay' && (
           <div className="animate-in fade-in duration-500 flex flex-col items-center justify-center h-full text-center">
             <Loader2 className="animate-spin text-orange-500 mb-6" size={48} />
-            <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800">Calculating Cut Line</h2>
-            <p className="text-neutral-400 font-bold uppercase text-[9px] tracking-widest mt-2">Breaking ties with cumulative scores...</p>
+            {waitingForScores ? (
+              <>
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800">Score Submitted!</h2>
+                <p className="text-neutral-400 font-bold uppercase text-[9px] tracking-widest mt-2">Waiting for other players...</p>
+                <div className="mt-4 bg-orange-50 border border-orange-100 rounded-xl px-6 py-3">
+                  <p className="text-orange-500 font-black text-2xl font-mono">{scoresSubmittedCount} <span className="text-orange-300">/ {players.filter(p => !p.isEliminated).length}</span></p>
+                  <p className="text-[9px] text-orange-400 uppercase font-bold tracking-widest mt-1">Scores In</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800">Calculating Cut Line</h2>
+                <p className="text-neutral-400 font-bold uppercase text-[9px] tracking-widest mt-2">Breaking ties with cumulative scores...</p>
+              </>
+            )}
           </div>
         )}
 
