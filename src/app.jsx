@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './auth/AuthProvider';
 import { saveGame, getGames } from './services/gameService';
+import { lobbyService } from './services/lobbyService';
 import {
   Trophy,
   Users,
@@ -82,32 +83,79 @@ const App = () => {
   const [matchHistory, setMatchHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Lobby fill: +1 player every 3s
-  // Runs during practice (filling) AND practice_lobby_wait so the dots
-  // keep ticking even after the user exits practice early.
+  // ── Real-time lobby via WebSocket ──────────────────────────
+  // Connects when user enters practice, disconnects on exit
   useEffect(() => {
-    const isActiveFill =
+    const isInLobby =
       (gameState === 'practice' && practicePhase === 'filling') ||
       gameState === 'practice_lobby_wait';
-    if (!isActiveFill) return;
 
-    const interval = setInterval(() => {
-      setWaitingPlayers(prev => {
-        const next = prev + 1;
-        if (next >= INITIAL_PLAYERS) {
-          clearInterval(interval);
-          // Only flip to warning if still inside the practice iframe
+    if (!isInLobby) return;
+
+    const handleMessage = (data) => {
+      switch (data.type) {
+        case 'JOINED_LOBBY':
+        case 'PLAYER_JOINED':
+        case 'PLAYER_LEFT':
+          setWaitingPlayers(data.playerCount);
+          if (data.playerCount >= INITIAL_PLAYERS) {
+            if (gameState === 'practice') {
+              setPracticePhase('warning');
+              setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+            }
+          }
+          break;
+
+        case 'LOBBY_READY':
+          setWaitingPlayers(INITIAL_PLAYERS);
           if (gameState === 'practice') {
             setPracticePhase('warning');
             setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+          } else if (gameState === 'practice_lobby_wait') {
+            initGame();
           }
-          return INITIAL_PLAYERS;
-        }
-        return next;
-      });
-    }, LOBBY_FILL_INTERVAL);
+          break;
 
-    return () => clearInterval(interval);
+        case 'LOBBY_FULL':
+          console.warn('Lobby full:', data.message);
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    // Connect and join lobby
+    lobbyService.connect(handleMessage).then(() => {
+      lobbyService.joinLobby({
+        userId: user?.userId,
+        username: user?.username,
+        entryFee: selectedBuyIn,
+      });
+    }).catch(err => {
+      console.error('WebSocket connection failed:', err);
+      // Fall back to simulated fill if WebSocket fails
+      const interval = setInterval(() => {
+        setWaitingPlayers(prev => {
+          const next = prev + 1;
+          if (next >= INITIAL_PLAYERS) {
+            clearInterval(interval);
+            if (gameState === 'practice') {
+              setPracticePhase('warning');
+              setPracticeWarningTimer(PRACTICE_WARNING_DURATION);
+            }
+            return INITIAL_PLAYERS;
+          }
+          return next;
+        });
+      }, LOBBY_FILL_INTERVAL);
+      return () => clearInterval(interval);
+    });
+
+    return () => {
+      lobbyService.leaveLobby({ entryFee: selectedBuyIn });
+      lobbyService.disconnect();
+    };
   }, [gameState, practicePhase]);
 
   // Auto-advance from lobby-wait once all players have joined
