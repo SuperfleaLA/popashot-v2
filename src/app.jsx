@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 const HOUSE_RAKE = 0.10;
-const INITIAL_PLAYERS = 10;
+const INITIAL_PLAYERS = 4; // ⚠️ TESTING — revert to 10 for production
 const CONTEST_OPTIONS = [2, 5, 10, 20, 50];
 const ROUND_START_TIMEOUT = 30;
 const POST_ROUND_WAIT = 30;
@@ -45,6 +45,8 @@ const App = () => {
   const [currentRound, setCurrentRound] = useState(1);
   const [players, setPlayers] = useState([]);
   const [postRoundTimer, setPostRoundTimer] = useState(POST_ROUND_WAIT);
+  const [postRoundBypassCount, setPostRoundBypassCount] = useState(0);
+  const [userBypassed, setUserBypassed] = useState(false);
   const [lobbyTimer, setLobbyTimer] = useState(ROUND_START_TIMEOUT);
   const [userReady, setUserReady] = useState(false);
   const [readyCount, setReadyCount] = useState(0);
@@ -57,6 +59,11 @@ const App = () => {
   const [showPracticeOver, setShowPracticeOver] = useState(false);
   const [activeLobbyId, setActiveLobbyId] = useState(null);
 
+  const setActiveLobbyIdBoth = (id) => {
+    activeLobbyIdRef.current = id;
+    setActiveLobbyId(id);
+  };
+
   // Keep ref in sync so closures always have the latest value
   useEffect(() => {
     activeLobbyIdRef.current = activeLobbyId;
@@ -67,6 +74,12 @@ const App = () => {
   const [roundStartingAt, setRoundStartingAt] = useState(null); // null = waiting, timestamp = counting down
   const scoreTimeoutRef = React.useRef(null);
   const activeLobbyIdRef = React.useRef(null);
+  const scoreDeadlineRef = React.useRef(null);
+  const gameIframeRef = React.useRef(null);
+  const roundResultsRef = React.useRef(null);
+  const handleRoundCompleteRef = React.useRef(null);
+  const scoreSubmittedRef = React.useRef(false);
+  const processedRoundRef = React.useRef(0); // tracks last processed round number
 
   const userObject = players.find(p => p.name.includes("You"));
   const isUserEliminated = userObject?.isEliminated;
@@ -77,8 +90,16 @@ const App = () => {
     const handleMessage = (event) => {
       if (!event.data) return;
       if (event.data.type === 'GAME_COMPLETE') {
-        if (gameState === 'practice') return; // discard practice scores
+        if (gameState === 'practice') return;
         finishShooting(event.data.score);
+      }
+      if (event.data.type === 'ROUND_COMPLETE') {
+        // Iframe 5s countdown finished — now transition the screen
+        const results = roundResultsRef.current;
+        if (results && handleRoundCompleteRef.current) {
+          handleRoundCompleteRef.current(results.isGameOver, results.ranked);
+          roundResultsRef.current = null;
+        }
       }
       if (event.data.type === 'PRACTICE_COMPLETE') {
         // Timer ran out in iframe — iframe already showed modal, skip interstitial
@@ -102,17 +123,19 @@ const App = () => {
       (gameState === 'practice' && practicePhase === 'filling') ||
       gameState === 'practice_lobby_wait' ||
       gameState === 'practice_done' ||
+      gameState === 'waiting_for_round' ||
       gameState === 'standing' ||
       gameState === 'playing_game' ||
       gameState === 'cut_reveal_delay' ||
-      gameState === 'post_round';
+      gameState === 'post_round' ||
+      gameState === 'finished';
 
     if (!isInLobby) return;
 
     const handleMessage = (data) => {
       switch (data.type) {
         case 'JOINED_LOBBY':
-          setActiveLobbyId(data.lobbyId);
+          setActiveLobbyIdBoth(data.lobbyId);
           setWaitingPlayers(data.playerCount);
           break;
 
@@ -135,11 +158,22 @@ const App = () => {
           break;
 
         case 'ROUND_START': {
+          // Guard — only process each round number once
+          if (processedRoundRef.current === data.roundNumber) {
+            console.log('ROUND_START already processed for round', data.roundNumber, '— skipping');
+            break;
+          }
+          console.log('ROUND_START processing round', data.roundNumber, 'scoreDeadline:', data.scoreDeadline, 'msUntilDeadline:', new Date(data.scoreDeadline).getTime() - Date.now());
+          processedRoundRef.current = data.roundNumber;
+
           setCurrentRound(data.roundNumber);
           setScoreSubmitted(false);
+          scoreSubmittedRef.current = false;
           setWaitingForScores(false);
           setScoresSubmittedCount(0);
           setReadyCount(0);
+          setUserBypassed(false);
+          setPostRoundBypassCount(0);
 
           // Build player list from server data
           setPlayers(data.players.map((p, i) => ({
@@ -153,21 +187,24 @@ const App = () => {
             eliminatedAt: null,
           })));
 
-          // Set score submission timeout
+          // Store scoreDeadline — timeout is last resort only
+          scoreDeadlineRef.current = data.scoreDeadline;
           if (scoreTimeoutRef.current) clearTimeout(scoreTimeoutRef.current);
-          const scoreDeadline = new Date(data.scoreDeadline).getTime();
-          const timeUntilDeadline = scoreDeadline - Date.now();
+          const deadlineMs = new Date(data.scoreDeadline).getTime();
+          // Add extra 30s buffer on top of server deadline to ensure this only
+          // fires as an absolute last resort — normal flow is all players submit naturally
+          const msUntilDeadline = Math.max(0, deadlineMs - Date.now()) + 30000;
+          const capturedLobbyId = data.lobbyId;
+          const capturedRoundNumber = data.roundNumber;
           scoreTimeoutRef.current = setTimeout(() => {
-            setScoreSubmitted(prev => {
-              if (!prev) {
-                lobbyService.requestResults({
-                  lobbyId: data.lobbyId,
-                  roundNumber: data.roundNumber,
-                });
-              }
-              return prev;
-            });
-          }, timeUntilDeadline);
+            if (!scoreSubmittedRef.current) {
+              console.log('Score timeout fired as last resort for round', capturedRoundNumber);
+              lobbyService.requestResults({
+                lobbyId: capturedLobbyId,
+                roundNumber: capturedRoundNumber,
+              });
+            }
+          }, msUntilDeadline);
 
           // Store the startAt timestamp — standing screen will count down to it
           setRoundStartingAt(data.startAt);
@@ -195,18 +232,38 @@ const App = () => {
             eliminatedAt: p.eliminatedAt,
           })));
 
-          // Award winnings if game over
-          if (data.isGameOver) {
-            const userResult = data.ranked.find(p => p.userId === user?.userId);
-            const prizePoolAmount = INITIAL_PLAYERS * (selectedBuyIn || 0);
-            if (data.ranked[0]?.userId === user?.userId) {
-              setBalance(prev => prev + prizePoolAmount * 0.70);
-            } else if (data.ranked[1]?.userId === user?.userId) {
-              setBalance(prev => prev + prizePoolAmount * 0.20);
-            }
-            setGameState('finished');
+          // Store results for after countdown
+          roundResultsRef.current = {
+            isGameOver: data.isGameOver,
+            ranked: data.ranked,
+          };
+
+          // Send START_COUNTDOWN to iframe — fires 5s countdown from this exact moment
+          const msg = { type: 'START_COUNTDOWN' };
+          if (gameIframeRef.current && gameIframeRef.current.contentWindow) {
+            gameIframeRef.current.contentWindow.postMessage(msg, '*');
           } else {
-            setGameState('post_round');
+            if (handleRoundCompleteRef.current) {
+              handleRoundCompleteRef.current(data.isGameOver, data.ranked);
+              roundResultsRef.current = null;
+            }
+          }
+          break;
+        }
+
+        case 'BYPASS_POST_ROUND':
+          // Another player hit bypass
+          setPostRoundBypassCount(data.bypassCount);
+          break;
+
+        case 'START_POST_ROUND': {
+          // Server says all bypassed or timer ended — go to next round
+          if (handleRoundCompleteRef.current) {
+            const results = roundResultsRef.current;
+            if (results) {
+              handleRoundCompleteRef.current(results.isGameOver, results.ranked);
+              roundResultsRef.current = null;
+            }
           }
           break;
         }
@@ -327,7 +384,6 @@ const App = () => {
     return () => clearInterval(timer);
   }, [gameState, roundStartingAt]);
 
-  // \u2500\u2500 Post-round auto-advance timer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   useEffect(() => {
     if (gameState !== 'post_round') return;
     setPostRoundTimer(POST_ROUND_WAIT);
@@ -336,7 +392,12 @@ const App = () => {
       setPostRoundTimer(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          proceedToNextRound();
+          if (activeLobbyIdRef.current) {
+            // Multiplayer — timer expired, send bypass signal
+            lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
+          } else {
+            proceedToNextRound();
+          }
           return 0;
         }
         return prev - 1;
@@ -422,24 +483,47 @@ const App = () => {
     }
   };
 
+  const handleRoundComplete = (isGameOver, ranked) => {
+    const prizePoolAmount = INITIAL_PLAYERS * ((selectedBuyIn || 0));
+    if (isGameOver) {
+      if (ranked && ranked[0]?.userId === user?.userId) {
+        setBalance(prev => prev + prizePoolAmount * 0.70);
+      } else if (ranked && ranked[1]?.userId === user?.userId) {
+        setBalance(prev => prev + prizePoolAmount * 0.20);
+      }
+      setGameState('finished');
+    } else {
+      setPostRoundBypassCount(0);
+      setUserBypassed(false);
+      setGameState('post_round');
+    }
+  };
+  handleRoundCompleteRef.current = handleRoundComplete;
+
   const startBasketballRound = () => {
-    if (isUserEliminated) finishShooting();
-    else setGameState('playing_game');
+    if (isUserEliminated) {
+      if (activeLobbyIdRef.current) {
+        setGameState('waiting_for_round');
+      } else {
+        finishShooting();
+      }
+    } else {
+      setGameState('playing_game');
+    }
   };
 
   const finishShooting = (userScore = null) => {
-    // If in a real multiplayer lobby, submit score to server
-    if (activeLobbyId && userScore !== null && !scoreSubmitted) {
+    // Multiplayer — submit score silently, stay on playing_game screen
+    if (activeLobbyIdRef.current && userScore !== null && !scoreSubmittedRef.current) {
+      scoreSubmittedRef.current = true;
       setScoreSubmitted(true);
-      setWaitingForScores(true);
       lobbyService.submitScore({
-        lobbyId: activeLobbyId,
+        lobbyId: activeLobbyIdRef.current,
         roundNumber: currentRound,
         score: userScore,
         userId: user?.userId,
       });
-      setGameState('cut_reveal_delay');
-      return; // Server will handle results via ROUND_RESULTS message
+      return; // Stay on playing_game — iframe shows "Waiting for others..."
     }
 
     // Single player / fallback — process locally
@@ -538,11 +622,28 @@ const App = () => {
   };
 
   const proceedToNextRound = () => {
-    setCurrentRound(prev => prev + 1);
     setPlayers(prev => prev.map(p => ({ ...p, currentRoundScore: 0 })));
     setReadyCount(0);
     setUserReady(false);
-    setGameState('standing');
+
+    if (activeLobbyIdRef.current) {
+      // Multiplayer — wait for server to send next ROUND_START
+      setGameState('waiting_for_round');
+    } else {
+      // Single player — advance round locally
+      setCurrentRound(prev => prev + 1);
+      setGameState('standing');
+    }
+  };
+
+  const handleBypassPostRound = () => {
+    if (userBypassed) return;
+    setUserBypassed(true);
+    if (activeLobbyIdRef.current) {
+      lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
+    } else {
+      proceedToNextRound();
+    }
   };
 
   const fetchHistory = async () => {
@@ -559,12 +660,13 @@ const App = () => {
       lobbyService.disconnect();
     }
     hasJoinedLobbyRef.current = false;
+    processedRoundRef.current = 0;
     setGameState('selection');
     setSelectedBuyIn(null);
     setWaitingPlayers(0);
     setPracticePhase('filling');
     setShowPracticeOver(false);
-    setActiveLobbyId(null);
+    setActiveLobbyIdBoth(null);
     setScoreSubmitted(false);
     setWaitingForScores(false);
     if (scoreTimeoutRef.current) clearTimeout(scoreTimeoutRef.current);
@@ -841,6 +943,27 @@ const App = () => {
           </div>
         )}
 
+        {/* ── WAITING FOR NEXT ROUND ────────────────────────────────────────── */}
+        {gameState === 'waiting_for_round' && (
+          <div className="animate-in fade-in duration-400 flex flex-col items-center justify-center h-full text-center gap-6">
+            <div className="w-20 h-20 bg-orange-50 border border-orange-100 rounded-full flex items-center justify-center mb-2">
+              <Loader2 size={36} className="text-orange-400 animate-spin" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-black italic uppercase tracking-tighter text-neutral-800 leading-none mb-2">Round {currentRound} Complete</h2>
+              <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest">Waiting for next round to begin...</p>
+            </div>
+            <div className="bg-white border border-neutral-200 rounded-2xl px-8 py-5 shadow-sm flex flex-col items-center gap-2">
+              <Trophy size={20} className="text-orange-400 mb-1" />
+              <p className="text-neutral-700 font-black text-sm uppercase tracking-widest">Round {currentRound + 1} of 4</p>
+              <p className="text-neutral-300 text-[9px] font-bold uppercase tracking-widest">Starting shortly</p>
+            </div>
+            <button onClick={exitToLobby} className="text-[9px] font-bold uppercase tracking-widest text-neutral-300 hover:text-neutral-500 transition-colors">
+              Exit Tournament
+            </button>
+          </div>
+        )}
+
         {/* \u2500\u2500 PRACTICE OVER INTERSTITIAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
         {showPracticeOver && (
           <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-neutral-900/60 animate-in fade-in duration-300">
@@ -943,7 +1066,7 @@ const App = () => {
               <button onClick={() => finishShooting()} className="text-[9px] font-black uppercase text-neutral-400 hover:text-orange-500 transition-colors">Skip Round</button>
             </div>
             <div className="flex-grow w-full bg-neutral-900 rounded-b-2xl border border-neutral-200 overflow-hidden shadow-2xl min-h-[400px]">
-              <iframe src="/basketball.html" className="w-full h-full border-none" title="Basketball Round" />
+              <iframe ref={gameIframeRef} src="/basketball.html" className="w-full h-full border-none" title="Basketball Round" />
             </div>
           </div>
         )}
@@ -989,16 +1112,29 @@ const App = () => {
 
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">Resetting In</p>
+                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-0.5">
+                    {activeLobbyId ? 'Next Round In' : 'Resetting In'}
+                  </p>
                   <p className="font-mono font-bold text-2xl leading-none text-orange-500">:{postRoundTimer.toString().padStart(2, '0')}</p>
+                  {activeLobbyId && postRoundBypassCount > 0 && (
+                    <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">{postRoundBypassCount} skipped</p>
+                  )}
                 </div>
 
-                {!isUserEliminated ? (
+                {!isUserEliminated && !activeLobbyId ? (
                   <button
                     onClick={proceedToNextRound}
                     className="bg-neutral-900 text-white hover:bg-neutral-800 px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-neutral-200 text-xs"
                   >
                     Continue <ArrowRight size={16} />
+                  </button>
+                ) : !isUserEliminated && activeLobbyId ? (
+                  <button
+                    onClick={handleBypassPostRound}
+                    disabled={userBypassed}
+                    className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 text-xs ${userBypassed ? 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-100'}`}
+                  >
+                    {userBypassed ? <>Waiting... <Loader2 size={14} className="animate-spin" /></> : <>Skip Wait <ArrowRight size={16} /></>}
                   </button>
                 ) : (
                   <button
