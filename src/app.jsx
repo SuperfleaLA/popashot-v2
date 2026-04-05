@@ -381,13 +381,17 @@ const App = () => {
 
   useEffect(() => {
     if (gameState !== 'post_round') return;
-    setPostRoundTimer(POST_ROUND_WAIT);
 
-    // Eliminated players auto-bypass immediately so they never block advancing players
+    // Eliminated players auto-bypass immediately so they never block advancing players.
+    // isUserEliminated is in the dep array so this re-runs once players state settles.
     if (activeLobbyIdRef.current && isUserEliminated) {
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
-      return; // No need to run the countdown timer for eliminated players
+      return;
     }
+
+    if (isUserEliminated) return; // single-player eliminated fallback — do nothing
+
+    setPostRoundTimer(POST_ROUND_WAIT);
 
     const timer = setInterval(() => {
       setPostRoundTimer(prev => {
@@ -406,7 +410,7 @@ const App = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [gameState]);
+  }, [gameState, isUserEliminated]);
 
   // \u2500\u2500 Handlers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
