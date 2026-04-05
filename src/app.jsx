@@ -78,6 +78,7 @@ const App = () => {
   const gameIframeRef = React.useRef(null);
   const roundResultsRef = React.useRef(null);
   const handleRoundCompleteRef = React.useRef(null);
+  const proceedToNextRoundRef = React.useRef(null);
   const scoreSubmittedRef = React.useRef(false);
   const processedRoundRef = React.useRef(0); // tracks last processed round number
 
@@ -258,13 +259,7 @@ const App = () => {
 
         case 'START_POST_ROUND': {
           // Server says all bypassed or timer ended — go to next round
-          if (handleRoundCompleteRef.current) {
-            const results = roundResultsRef.current;
-            if (results) {
-              handleRoundCompleteRef.current(results.isGameOver, results.ranked);
-              roundResultsRef.current = null;
-            }
-          }
+          if (proceedToNextRoundRef.current) proceedToNextRoundRef.current();
           break;
         }
 
@@ -482,6 +477,8 @@ const App = () => {
       setTimeout(() => startBasketballRound(), 500);
     }
   };
+
+  proceedToNextRoundRef.current = proceedToNextRound;
 
   const handleRoundComplete = (isGameOver, ranked) => {
     const prizePoolAmount = INITIAL_PLAYERS * ((selectedBuyIn || 0));
