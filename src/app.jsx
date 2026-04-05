@@ -79,6 +79,7 @@ const App = () => {
   const roundResultsRef = React.useRef(null);
   const handleRoundCompleteRef = React.useRef(null);
   const proceedToNextRoundRef = React.useRef(null);
+  const postRoundTimerRef = React.useRef(null);
   const scoreSubmittedRef = React.useRef(false);
   const processedRoundRef = React.useRef(0); // tracks last processed round number
 
@@ -253,7 +254,6 @@ const App = () => {
         }
 
         case 'BYPASS_POST_ROUND':
-          // Another player hit bypass
           console.log('[WS] BYPASS_POST_ROUND received — bypassCount:', data.bypassCount, 'totalCount:', data.totalCount);
           setPostRoundBypassCount(data.bypassCount);
           break;
@@ -385,7 +385,6 @@ const App = () => {
 
     console.log('[post_round effect] fired — isUserEliminated:', isUserEliminated, 'activeLobbyId:', activeLobbyIdRef.current, 'currentRound:', currentRound);
 
-    // Eliminated players auto-bypass immediately so they never block advancing players.
     if (activeLobbyIdRef.current && isUserEliminated) {
       console.log('[post_round effect] ELIMINATED — sending bypassPostRound');
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
@@ -400,6 +399,7 @@ const App = () => {
       setPostRoundTimer(prev => {
         if (prev <= 1) {
           clearInterval(timer);
+          postRoundTimerRef.current = null;
           if (activeLobbyIdRef.current) {
             console.log('[post_round timer] expired — sending bypassPostRound');
             lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
@@ -411,8 +411,12 @@ const App = () => {
         return prev - 1;
       });
     }, 1000);
+    postRoundTimerRef.current = timer;
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      postRoundTimerRef.current = null;
+    };
   }, [gameState, isUserEliminated]);
 
   // \u2500\u2500 Handlers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -646,6 +650,11 @@ const App = () => {
   const handleBypassPostRound = () => {
     if (userBypassed) return;
     setUserBypassed(true);
+    // Cancel the countdown timer so it doesn't send a duplicate bypass
+    if (postRoundTimerRef.current) {
+      clearInterval(postRoundTimerRef.current);
+      postRoundTimerRef.current = null;
+    }
     if (activeLobbyIdRef.current) {
       console.log('[handleBypassPostRound] sending bypassPostRound — lobbyId:', activeLobbyIdRef.current, 'round:', currentRound);
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
