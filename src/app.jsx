@@ -254,11 +254,12 @@ const App = () => {
 
         case 'BYPASS_POST_ROUND':
           // Another player hit bypass
+          console.log('[WS] BYPASS_POST_ROUND received — bypassCount:', data.bypassCount, 'totalCount:', data.totalCount);
           setPostRoundBypassCount(data.bypassCount);
           break;
 
         case 'START_POST_ROUND': {
-          // Server says all bypassed or timer ended — go to next round
+          console.log('[WS] START_POST_ROUND received — calling proceedToNextRound');
           if (proceedToNextRoundRef.current) proceedToNextRoundRef.current();
           break;
         }
@@ -382,14 +383,16 @@ const App = () => {
   useEffect(() => {
     if (gameState !== 'post_round') return;
 
+    console.log('[post_round effect] fired — isUserEliminated:', isUserEliminated, 'activeLobbyId:', activeLobbyIdRef.current, 'currentRound:', currentRound);
+
     // Eliminated players auto-bypass immediately so they never block advancing players.
-    // isUserEliminated is in the dep array so this re-runs once players state settles.
     if (activeLobbyIdRef.current && isUserEliminated) {
+      console.log('[post_round effect] ELIMINATED — sending bypassPostRound');
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
       return;
     }
 
-    if (isUserEliminated) return; // single-player eliminated fallback — do nothing
+    if (isUserEliminated) return;
 
     setPostRoundTimer(POST_ROUND_WAIT);
 
@@ -398,7 +401,7 @@ const App = () => {
         if (prev <= 1) {
           clearInterval(timer);
           if (activeLobbyIdRef.current) {
-            // Multiplayer — timer expired, send bypass signal
+            console.log('[post_round timer] expired — sending bypassPostRound');
             lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
           } else {
             proceedToNextRound();
@@ -494,10 +497,8 @@ const App = () => {
     setUserReady(false);
 
     if (activeLobbyIdRef.current) {
-      // Multiplayer — wait for server to send next ROUND_START
       setGameState('waiting_for_round');
     } else {
-      // Single player — advance round locally
       setCurrentRound(prev => prev + 1);
       setGameState('standing');
     }
@@ -646,6 +647,7 @@ const App = () => {
     if (userBypassed) return;
     setUserBypassed(true);
     if (activeLobbyIdRef.current) {
+      console.log('[handleBypassPostRound] sending bypassPostRound — lobbyId:', activeLobbyIdRef.current, 'round:', currentRound);
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
     } else {
       proceedToNextRound();
