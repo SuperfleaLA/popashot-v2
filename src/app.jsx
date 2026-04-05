@@ -478,6 +478,20 @@ const App = () => {
     }
   };
 
+  const proceedToNextRound = () => {
+    setPlayers(prev => prev.map(p => ({ ...p, currentRoundScore: 0 })));
+    setReadyCount(0);
+    setUserReady(false);
+
+    if (activeLobbyIdRef.current) {
+      // Multiplayer — wait for server to send next ROUND_START
+      setGameState('waiting_for_round');
+    } else {
+      // Single player — advance round locally
+      setCurrentRound(prev => prev + 1);
+      setGameState('standing');
+    }
+  };
   proceedToNextRoundRef.current = proceedToNextRound;
 
   const handleRoundComplete = (isGameOver, ranked) => {
@@ -496,7 +510,6 @@ const App = () => {
     }
   };
   handleRoundCompleteRef.current = handleRoundComplete;
-
   const startBasketballRound = () => {
     if (isUserEliminated) {
       if (activeLobbyIdRef.current) {
@@ -615,21 +628,6 @@ const App = () => {
         });
       }
       setGameState('post_round');
-    }
-  };
-
-  const proceedToNextRound = () => {
-    setPlayers(prev => prev.map(p => ({ ...p, currentRoundScore: 0 })));
-    setReadyCount(0);
-    setUserReady(false);
-
-    if (activeLobbyIdRef.current) {
-      // Multiplayer — wait for server to send next ROUND_START
-      setGameState('waiting_for_round');
-    } else {
-      // Single player — advance round locally
-      setCurrentRound(prev => prev + 1);
-      setGameState('standing');
     }
   };
 
