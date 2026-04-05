@@ -254,12 +254,12 @@ const App = () => {
         }
 
         case 'BYPASS_POST_ROUND':
-          console.log('[WS] BYPASS_POST_ROUND received — bypassCount:', data.bypassCount, 'totalCount:', data.totalCount);
+          // Another player hit bypass
           setPostRoundBypassCount(data.bypassCount);
           break;
 
         case 'START_POST_ROUND': {
-          console.log('[WS] START_POST_ROUND received — calling proceedToNextRound');
+          // Server says all survivors bypassed — go to next round
           if (proceedToNextRoundRef.current) proceedToNextRoundRef.current();
           break;
         }
@@ -383,14 +383,9 @@ const App = () => {
   useEffect(() => {
     if (gameState !== 'post_round') return;
 
-    console.log('[post_round effect] fired — isUserEliminated:', isUserEliminated, 'activeLobbyId:', activeLobbyIdRef.current, 'currentRound:', currentRound);
-
-    if (activeLobbyIdRef.current && isUserEliminated) {
-      console.log('[post_round effect] ELIMINATED — sending bypassPostRound');
-      lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
-      return;
-    }
-
+    // Only advancing players participate in the bypass flow.
+    // Eliminated players simply sit on the results screen until advancing
+    // players skip or the timer runs out — they have no vote.
     if (isUserEliminated) return;
 
     setPostRoundTimer(POST_ROUND_WAIT);
@@ -401,7 +396,6 @@ const App = () => {
           clearInterval(timer);
           postRoundTimerRef.current = null;
           if (activeLobbyIdRef.current) {
-            console.log('[post_round timer] expired — sending bypassPostRound');
             lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
           } else {
             proceedToNextRound();
@@ -650,13 +644,11 @@ const App = () => {
   const handleBypassPostRound = () => {
     if (userBypassed) return;
     setUserBypassed(true);
-    // Cancel the countdown timer so it doesn't send a duplicate bypass
     if (postRoundTimerRef.current) {
       clearInterval(postRoundTimerRef.current);
       postRoundTimerRef.current = null;
     }
     if (activeLobbyIdRef.current) {
-      console.log('[handleBypassPostRound] sending bypassPostRound — lobbyId:', activeLobbyIdRef.current, 'round:', currentRound);
       lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
     } else {
       proceedToNextRound();
