@@ -383,6 +383,12 @@ const App = () => {
     if (gameState !== 'post_round') return;
     setPostRoundTimer(POST_ROUND_WAIT);
 
+    // Eliminated players auto-bypass immediately so they never block advancing players
+    if (activeLobbyIdRef.current && isUserEliminated) {
+      lobbyService.send('bypassPostRound', { lobbyId: activeLobbyIdRef.current, roundNumber: currentRound });
+      return; // No need to run the countdown timer for eliminated players
+    }
+
     const timer = setInterval(() => {
       setPostRoundTimer(prev => {
         if (prev <= 1) {
@@ -510,6 +516,7 @@ const App = () => {
     }
   };
   handleRoundCompleteRef.current = handleRoundComplete;
+
   const startBasketballRound = () => {
     if (isUserEliminated) {
       if (activeLobbyIdRef.current) {
